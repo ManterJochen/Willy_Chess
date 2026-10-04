@@ -23,3 +23,10 @@ git clone https://github.com/ManterJochen/Workaholic-Willy.git external/Workahol
 pip install -r requirements.txt      # everything, with CUDA torch wheels that also import without a GPU
 pip install -e .\external\Workaholic-Willy --no-deps
 ```
+
+## Repositories used in here
+
+- [Workaholic-Willy](https://github.com/ManterJochen/Workaholic-Willy)
+- [Stockfish](https://github.com/official-stockfish/Stockfish)
+- [Chessboard](https://github.com/Elucidation/ChessboardHarmonicDetect)
+- [Chessboard-ML](https://github.com/Elucidation/ChessboardDetect)
