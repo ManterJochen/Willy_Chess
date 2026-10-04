@@ -1,0 +1,3 @@
+-r external/Workaholic-Willy/requirements.txt
+
+python-chess==1.999
