@@ -1,3 +1,4 @@
--r external/Workaholic-Willy/requirements.txt
-
+# -r external/Workaholic-Willy/requirements.txt
+numpy
+opencv-python
 python-chess==1.999
