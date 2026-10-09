@@ -1,145 +1,283 @@
 import cv2 as cv
 import numpy as np
 
+
 class SaddlePointDetector:
     """
-    Saddle point detector using the Hessian matrix and non-maximum suppression.
+    Detect saddle points using the Hessian matrix, non-maximum suppression,
+    subpixel refinement, and optional symmetry filtering.
 
     Attributes:
         image (np.ndarray): Input image.
-        max_pts (int): Maximum number of saddle points to detect.
-        filter (bool): Threshold for filtering saddle points.
+        max_pts (int): Maximum number of points to return. <= 0 means no limit.
+        apply_filter (bool): Whether to apply symmetry and border filtering.
+        threshold (float): Minimum saddle response.
+        nms_size (int): Window size for non-maximum suppression.
+        win_size (int): Border margin used during filtering.
     """
-    def __init__(self, image: np.ndarray, max_pts: int, filter: bool):
+
+    def __init__(
+        self,
+        image: np.ndarray,
+        max_pts: int = 0,
+        apply_filter: bool = True,
+        threshold: float = 10000.0,
+        nms_size: int = 11,
+        win_size: int = 10,
+    ):
+        if image is None or not isinstance(image, np.ndarray):
+            raise ValueError("image must be a valid NumPy array.")
+
+        if image.size == 0:
+            raise ValueError("image must not be empty.")
+
+        if image.ndim not in (2, 3):
+            raise ValueError("image must be grayscale or a color image.")
+
+        if image.ndim == 3 and image.shape[2] not in (3, 4):
+            raise ValueError("Color image must have 3 or 4 channels.")
+
+        if nms_size < 1 or nms_size % 2 == 0:
+            raise ValueError("nms_size must be a positive odd number.")
+
+        if win_size < 5:
+            raise ValueError("win_size must be at least 5.")
+
         self.image = image
         self.max_pts = max_pts
-        self.filter = filter
-
+        self.apply_filter = apply_filter
+        self.threshold = threshold
+        self.nms_size = nms_size
+        self.win_size = win_size
 
     def detect(self) -> np.ndarray:
-        # convert image to grayscale if it is not already
-        if len(self.image.shape) == 3:
-            gray_image = cv.cvtColor(self.image, cv.COLOR_BGR2GRAY)
+        """
+        Detect saddle points.
+
+        Returns:
+            np.ndarray: Points with shape (N, 2), in (x, y) order,
+                        using float64 subpixel coordinates.
+        """
+        # Convert input to grayscale.
+        if self.image.ndim == 3:
+            if self.image.shape[2] == 4:
+                gray_image = cv.cvtColor(
+                    self.image, cv.COLOR_BGRA2GRAY
+                )
+            else:
+                gray_image = cv.cvtColor(
+                    self.image, cv.COLOR_BGR2GRAY
+                )
         else:
             gray_image = self.image.copy()
 
-        win_size = 10
+        # Sobel derivatives work with floating-point image data.
+        gray = cv.blur(gray_image, (3, 3))
+        gray = gray.astype(np.float32, copy=False)
 
-        gray = cv.blur(gray_image, (3,3))
+        h, w = gray.shape
+
+        # The symmetry filter needs a ring with radius 5.
+        if h <= 2 * self.win_size + 1 or w <= 2 * self.win_size + 1:
+            return np.empty((0, 2), dtype=np.float64)
+
         saddle, sub_s, sub_t, gx, gy = self._get_saddle(gray)
-        self._non_max_suppression(saddle)
 
+        # Keep only local maxima.
+        self._non_max_suppression(saddle, self.nms_size)
 
-        saddle[saddle< 10000] = 0
-        sub_idxs = np.nonzero(saddle)
-        spts = np.argwhere(saddle).astype(np.float64)[:, [1, 0]]
+        # Apply the response threshold.
+        saddle[saddle < self.threshold] = 0
 
-        sub_off = np.array([sub_s[sub_idxs], sub_t[sub_idxs]]).T
-        spts = spts + sub_off
+        # Extract candidate locations.
+        ys, xs = np.nonzero(saddle)
 
-        saddle_strengths = saddle[sub_idxs]
-        sorted_indicies = np.argsort(saddle_strengths)[::-1]  # sort in descending order
-        spts = spts[sorted_indicies]
+        if len(xs) == 0:
+            return np.empty((0, 2), dtype=np.float64)
 
-        spts = self._filter_saddle_points(gray_image=gray, gx=gx, gy=gy, saddle_pts=spts, filter=self.filter, win_size=win_size)
-        # Take only the top max_pts
-        if self.max_pts > 0 and len(spts) > self.max_pts:
-            spts = spts[:self.max_pts]
+        # Convert (y, x) to (x, y).
+        points = np.column_stack((xs, ys)).astype(np.float64)
 
-        return spts
+        # Refine locations to subpixel coordinates.
+        offsets = np.column_stack((
+            sub_s[ys, xs],
+            sub_t[ys, xs],
+        ))
 
+        points += offsets
 
-    def _get_saddle(gray_image):
-        img = gray_image
-        gx = cv.Sobel(img, cv.CV_32F, 1, 0)
-        gy = cv.Sobel(img, cv.CV_32F, 0, 1)
+        # Sort candidates by saddle response, strongest first.
+        strengths = saddle[ys, xs]
+        sorted_indices = np.argsort(strengths)[::-1]
+        points = points[sorted_indices]
+
+        # Optional border and symmetry filtering.
+        if self.apply_filter:
+            points = self._filter_saddle_points(
+                gray_image=gray,
+                gx=gx,
+                gy=gy,
+                saddle_pts=points,
+                win_size=self.win_size,
+            )
+
+        # Return only the requested number of points.
+        if self.max_pts > 0:
+            points = points[:self.max_pts]
+
+        return points
+
+    def _get_saddle(
+        self,
+        gray_image: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute the Hessian determinant response and subpixel offsets.
+        """
+        gx = cv.Sobel(gray_image, cv.CV_32F, 1, 0)
+        gy = cv.Sobel(gray_image, cv.CV_32F, 0, 1)
+
         gxx = cv.Sobel(gx, cv.CV_32F, 1, 0)
         gyy = cv.Sobel(gy, cv.CV_32F, 0, 1)
         gxy = cv.Sobel(gx, cv.CV_32F, 0, 1)
 
-        S = -gxx * gyy + gxy**2
+        # A saddle point has a negative Hessian determinant.
+        det = gxx * gyy - gxy * gxy
+        saddle = -det
 
-        denom = (gxx*gyy - gxy*gxy)
-        sub_s = np.divide(gy*gxy - gx*gyy, denom, out=np.zeros_like(denom), where=denom!=0)
-        sub_t = np.divide(gx*gxy - gy*gxx, denom, out=np.zeros_like(denom), where=denom!=0)
-        return S, sub_s, sub_t, gx, gy
+        # Avoid division by zero where the Hessian is singular.
+        sub_s = np.divide(
+            gy * gxy - gx * gyy,
+            det,
+            out=np.zeros_like(det),
+            where=det != 0,
+        )
 
+        sub_t = np.divide(
+            gx * gxy - gy * gxx,
+            det,
+            out=np.zeros_like(det),
+            where=det != 0,
+        )
 
-    def _non_max_suppression(image, size=11):
-        element = np.ones([size, size], dtype=np.uint8)
-        dilated = cv.dilate(image, element)
+        return saddle, sub_s, sub_t, gx, gy
+
+    def _non_max_suppression(
+        self,
+        image: np.ndarray,
+        size: int,
+    ) -> None:
+        """
+        Suppress pixels that are not local maxima.
+
+        Modifies the input image in place.
+        """
+        kernel = np.ones((size, size), dtype=np.uint8)
+        dilated = cv.dilate(image, kernel)
+
         peaks = cv.compare(image, dilated, cv.CMP_EQ)
         image[peaks == 0] = 0
 
-
     def _filter_saddle_points(
-            self,
-            gray_image,
-            gx,
-            gy,
-            saddle_pts,
-            filter: bool,
-            win_size: int):
+        self,
+        gray_image: np.ndarray,
+        gx: np.ndarray,
+        gy: np.ndarray,
+        saddle_pts: np.ndarray,
+        win_size: int,
+    ) -> np.ndarray:
         """
-        Filter saddle points based on a given criterion.
+        Filter points based on border distance, gradient symmetry,
+        and intensity symmetry.
 
-        Args:
-            saddle_pts (np.ndarray): Array of saddle points.
-            filter (bool): Whether to apply filtering.
-            win_size (int): Window size for filtering.
-
-        Returns:
-            np.ndarray: Filtered saddle points.
+        Input and output coordinates are in (x, y) order.
         """
+        if len(saddle_pts) == 0:
+            return saddle_pts
 
-        if len(saddle_pts) > 0 and filter:
-            # 1. edge clipping: remove points too close to the image border
-            near_boarder = np.logical_or(
-                np.any(saddle_pts <= win_size, axis=1),
-                np.any(saddle_pts[:, [1, 0]] >= np.array(gray_image.shape) - win_size - 1, axis=1)
-            )
+        h, w = gray_image.shape
 
-            # 2. rose plot symmetry
-            h, w_img = gray_image.shape
-            mag = np.sqrt(gx**2 + gy**2)
-            ixs = np.round(saddle_pts[:, 0]).astype(int)
-            iys = np.round(saddle_pts[:, 1]).astype(int)
+        # Reject points too close to the border.
+        margin = max(win_size, 5)
 
-            # ensure indices are within image bounds
-            ixs = np.clip(ixs, 5, w_img - 6)
-            iys = np.clip(iys, 5, h - 6)
+        x = saddle_pts[:, 0]
+        y = saddle_pts[:, 1]
 
-            # Precompute relative offsets for 40 square boundary pixels (clockwise)
-            dx = np.concatenate([np.arange(-5, 6), np.ones(9, dtype=int)*5, np.arange(5, -6, -1), np.ones(9, dtype=int)*-5])
-            dy = np.concatenate([np.ones(11, dtype=int)*-5, np.arange(-4, 5), np.ones(11, dtype=int)*5, np.arange(4, -5, -1)])
-            
-            # Extract all boundary rings at once: Shape (N, 40)
-            ring_mags = mag[iys[:, None] + dy, ixs[:, None] + dx]
-            
-            # Calculate magnitude symmetry score using 180-degree periodic correlation
-            row_sums = np.sum(ring_mags, axis=1, keepdims=True)
-            norm_mags = ring_mags / (row_sums + 1e-6)
-            scores = np.sum(norm_mags * np.roll(norm_mags, 20, axis=1), axis=1)
-            
-            # 3. Extract Intensity Ring for Point Symmetry
-            ring_intensities = gray_image[iys[:, None] + dy, ixs[:, None] + dx].astype(np.float32)
-            
-            # Calculate Intensity Symmetry (NCC on the ring)
-            # Subtract mean of each ring
-            ring_means = np.mean(ring_intensities, axis=1, keepdims=True)
-            ring_centered = ring_intensities - ring_means
-            
-            # 180-degree correlation (periodic shift by 20 in a 40-pixel ring)
-            ring_rot = np.roll(ring_centered, 20, axis=1)
-            num = np.sum(ring_centered * ring_rot, axis=1)
-            den = np.sqrt(np.sum(ring_centered**2, axis=1) * np.sum(ring_rot**2, axis=1))
-            # ncc_scores will be near 1.0 for symmetric corners, near -1.0 for anti-symmetric
-            ncc_scores = np.divide(num, den, out=np.zeros_like(num), where=den!=0)
-            
-            # Combined filter: high magnitude symmetry AND high intensity symmetry
-            # X-corners have 4 clear peaks (scores) and point symmetry (ncc_scores)
-            valid_mask = ~near_boarder & (scores >= 0.02) & (ncc_scores >= 0.2)
-                
-            spts = saddle_pts[valid_mask]
+        valid = (
+            (x >= margin)
+            & (y >= margin)
+            & (x < w - margin)
+            & (y < h - margin)
+        )
 
-        return spts
+        saddle_pts = saddle_pts[valid]
+
+        if len(saddle_pts) == 0:
+            return saddle_pts
+
+        # Convert remaining subpixel coordinates to integer indices.
+        ixs = np.rint(saddle_pts[:, 0]).astype(int)
+        iys = np.rint(saddle_pts[:, 1]).astype(int)
+
+        # Magnitude of the image gradient.
+        mag = np.sqrt(gx**2 + gy**2)
+
+        # Construct the 40-pixel boundary ring.
+        dx = np.concatenate((
+            np.arange(-5, 6),
+            np.full(9, 5, dtype=int),
+            np.arange(5, -6, -1),
+            np.full(9, -5, dtype=int),
+        ))
+
+        dy = np.concatenate((
+            np.full(11, -5, dtype=int),
+            np.arange(-4, 5),
+            np.full(11, 5, dtype=int),
+            np.arange(4, -5, -1),
+        ))
+
+        # Gradient magnitude symmetry.
+        ring_mags = mag[iys[:, None] + dy, ixs[:, None] + dx]
+
+        row_sums = np.sum(ring_mags, axis=1, keepdims=True)
+        norm_mags = ring_mags / (row_sums + 1e-6)
+
+        scores = np.sum(
+            norm_mags * np.roll(norm_mags, 20, axis=1),
+            axis=1,
+        )
+
+        # Intensity symmetry.
+        ring_intensities = gray_image[
+            iys[:, None] + dy,
+            ixs[:, None] + dx,
+        ]
+
+        ring_means = np.mean(
+            ring_intensities,
+            axis=1,
+            keepdims=True,
+        )
+
+        ring_centered = ring_intensities - ring_means
+        ring_rot = np.roll(ring_centered, 20, axis=1)
+
+        numerator = np.sum(ring_centered * ring_rot, axis=1)
+
+        denominator = np.sqrt(
+            np.sum(ring_centered**2, axis=1)
+            * np.sum(ring_rot**2, axis=1)
+        )
+
+        ncc_scores = np.divide(
+            numerator,
+            denominator,
+            out=np.zeros_like(numerator),
+            where=denominator > 0,
+        )
+
+        # Apply both symmetry criteria.
+        valid_mask = (scores >= 0.02) & (ncc_scores >= 0.2)
+
+        return saddle_pts[valid_mask]
