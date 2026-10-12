@@ -1,0 +1,1376 @@
+{
+ "note": "Erzeugt mit python -m bench.run --write-baseline; Szenen-Fingerabdrücke gelten für die Versionen unter meta.",
+ "meta": {
+  "reference": {
+   "python": "3.13.16",
+   "numpy": "2.5.3",
+   "opencv": "5.0.0",
+   "scipy": "1.18.1",
+   "chess": "1.11.2",
+   "date": "2026-10-11",
+   "adapter": "reference"
+  },
+  "original": {
+   "python": "3.13.16",
+   "numpy": "2.5.3",
+   "opencv": "5.0.0",
+   "scipy": "1.18.1",
+   "chess": "1.11.2",
+   "date": "2026-10-11",
+   "adapter": "original"
+  }
+ },
+ "adapters": {
+  "reference": {
+   "full": {
+    "ecken": {
+     "fingerprint": "9285ae24ec470d3d",
+     "quick": false,
+     "seconds": 2.9,
+     "rows": {
+      "0-45°": {
+       "counts": {
+        "Ecken gefunden": [
+         1958,
+         1960
+        ]
+       },
+       "values": {
+        "RMSE px": 0.04161616034825236,
+        "95%-Quantil px": 0.07240255856514616
+       },
+       "max": {
+        "RMSE px": 0.04161616034825236,
+        "95%-Quantil px": 0.07240255856514616
+       },
+       "failures": [
+        9,
+        26
+       ]
+      }
+     }
+    },
+    "brett": {
+     "fingerprint": "f62421036fb7b78f",
+     "quick": false,
+     "seconds": 16.6,
+     "rows": {
+      "Figuren 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         30,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Figuren 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         30,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Störmuster 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         30,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Störmuster 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         30,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    },
+    "einmessen": {
+     "fingerprint": "235b23ac509b170b",
+     "quick": false,
+     "seconds": 64.8,
+     "rows": {
+      "35°": {
+       "counts": {
+        "eingemessen": [
+         30,
+         30
+        ],
+        "falsch eingemessen": [
+         0,
+         30
+        ],
+        "Brett komplett": [
+         29,
+         30
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.21671274501855317
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.3377054422756709
+       },
+       "failures": [
+        19
+       ]
+      },
+      "50°": {
+       "counts": {
+        "eingemessen": [
+         30,
+         30
+        ],
+        "falsch eingemessen": [
+         0,
+         30
+        ],
+        "Brett komplett": [
+         30,
+         30
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.25756764993580405
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.8265045044663522
+       },
+       "failures": []
+      },
+      "60°": {
+       "counts": {
+        "eingemessen": [
+         29,
+         30
+        ],
+        "falsch eingemessen": [
+         0,
+         30
+        ],
+        "Brett komplett": [
+         29,
+         30
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.2766119243742696
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.7777517136021928
+       },
+       "failures": [
+        17
+       ]
+      },
+      "70°": {
+       "counts": {
+        "eingemessen": [
+         27,
+         30
+        ],
+        "falsch eingemessen": [
+         0,
+         30
+        ],
+        "Brett komplett": [
+         23,
+         30
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.28731797758290817
+       },
+       "max": {
+        "Feldgröße-Fehler %": 1.1037395114150805
+       },
+       "failures": [
+        1,
+        4,
+        8,
+        16,
+        18,
+        22,
+        25
+       ]
+      }
+     }
+    },
+    "zuordnung": {
+     "fingerprint": "2306f5a642e03708",
+     "quick": false,
+     "seconds": 144.4,
+     "rows": {
+      "0°": {
+       "counts": {
+        "Figur richtig": [
+         1723,
+         1723
+        ],
+        "Brett komplett": [
+         60,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "20°": {
+       "counts": {
+        "Figur richtig": [
+         1674,
+         1674
+        ],
+        "Brett komplett": [
+         60,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "30°": {
+       "counts": {
+        "Figur richtig": [
+         1681,
+         1681
+        ],
+        "Brett komplett": [
+         60,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "35°": {
+       "counts": {
+        "Figur richtig": [
+         1650,
+         1650
+        ],
+        "Brett komplett": [
+         60,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "50°": {
+       "counts": {
+        "Figur richtig": [
+         1722,
+         1722
+        ],
+        "Brett komplett": [
+         60,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "60°": {
+       "counts": {
+        "Figur richtig": [
+         1688,
+         1688
+        ],
+        "Brett komplett": [
+         60,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "70°": {
+       "counts": {
+        "Figur richtig": [
+         1674,
+         1674
+        ],
+        "Brett komplett": [
+         57,
+         60
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    },
+    "tracking": {
+     "fingerprint": "8454beafdd6bf371",
+     "quick": false,
+     "seconds": 439.9,
+     "rows": {
+      "50°": {
+       "counts": {
+        "Zug richtig": [
+         400,
+         400
+        ],
+        "markiert": [
+         0,
+         400
+        ],
+        "still falsch": [
+         0,
+         400
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "60°": {
+       "counts": {
+        "Zug richtig": [
+         400,
+         400
+        ],
+        "markiert": [
+         0,
+         400
+        ],
+        "still falsch": [
+         0,
+         400
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "70°": {
+       "counts": {
+        "Zug richtig": [
+         396,
+         400
+        ],
+        "markiert": [
+         4,
+         400
+        ],
+        "still falsch": [
+         0,
+         400
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        7033,
+        7034,
+        7035,
+        7036
+       ]
+      }
+     }
+    },
+    "stress": {
+     "fingerprint": "2ee8815a39b96e18",
+     "quick": false,
+     "seconds": 54.1,
+     "rows": {
+      "ohne": {
+       "counts": {
+        "Figur richtig": [
+         544,
+         544
+        ],
+        "Brett komplett": [
+         16,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Maske +1 px": {
+       "counts": {
+        "Figur richtig": [
+         553,
+         555
+        ],
+        "Brett komplett": [
+         17,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        7
+       ]
+      },
+      "Maske -1 px": {
+       "counts": {
+        "Figur richtig": [
+         555,
+         555
+        ],
+        "Brett komplett": [
+         17,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Figurensatz +15 %": {
+       "counts": {
+        "Figur richtig": [
+         562,
+         562
+        ],
+        "Brett komplett": [
+         16,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Figurensatz -15 %": {
+       "counts": {
+        "Figur richtig": [
+         553,
+         553
+        ],
+        "Brett komplett": [
+         19,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Tiefe 3 px versetzt": {
+       "counts": {
+        "Figur richtig": [
+         551,
+         561
+        ],
+        "Brett komplett": [
+         14,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        1,
+        6,
+        7,
+        10,
+        18
+       ]
+      },
+      "Brett 8 mm gewölbt": {
+       "counts": {
+        "Figur richtig": [
+         572,
+         572
+        ],
+        "Brett komplett": [
+         19,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Brett 8 mm durchgehängt": {
+       "counts": {
+        "Figur richtig": [
+         571,
+         571
+        ],
+        "Brett komplett": [
+         20,
+         20
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    }
+   },
+   "quick": {
+    "ecken": {
+     "fingerprint": "737b6a117114e729",
+     "quick": true,
+     "seconds": 0.6,
+     "rows": {
+      "0-45°": {
+       "counts": {
+        "Ecken gefunden": [
+         392,
+         392
+        ]
+       },
+       "values": {
+        "RMSE px": 0.04072266949893326,
+        "95%-Quantil px": 0.06990309079983516
+       },
+       "max": {
+        "RMSE px": 0.04072266949893326,
+        "95%-Quantil px": 0.06990309079983516
+       },
+       "failures": []
+      }
+     }
+    },
+    "brett": {
+     "fingerprint": "8d1dd30032bb5d81",
+     "quick": true,
+     "seconds": 3.5,
+     "rows": {
+      "Figuren 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         6,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Figuren 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         6,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Störmuster 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         6,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Störmuster 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         6,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    },
+    "einmessen": {
+     "fingerprint": "e7a0afbe89b72e8d",
+     "quick": true,
+     "seconds": 15.3,
+     "rows": {
+      "35°": {
+       "counts": {
+        "eingemessen": [
+         6,
+         6
+        ],
+        "falsch eingemessen": [
+         0,
+         6
+        ],
+        "Brett komplett": [
+         6,
+         6
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.22880301209764106
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.32771790336585394
+       },
+       "failures": []
+      },
+      "50°": {
+       "counts": {
+        "eingemessen": [
+         6,
+         6
+        ],
+        "falsch eingemessen": [
+         0,
+         6
+        ],
+        "Brett komplett": [
+         6,
+         6
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.1766489929872365
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.3218339107687873
+       },
+       "failures": []
+      },
+      "60°": {
+       "counts": {
+        "eingemessen": [
+         6,
+         6
+        ],
+        "falsch eingemessen": [
+         0,
+         6
+        ],
+        "Brett komplett": [
+         6,
+         6
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.25835236073991075
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.38351592493928166
+       },
+       "failures": []
+      },
+      "70°": {
+       "counts": {
+        "eingemessen": [
+         5,
+         6
+        ],
+        "falsch eingemessen": [
+         0,
+         6
+        ],
+        "Brett komplett": [
+         4,
+         6
+        ]
+       },
+       "values": {
+        "Feldgröße-Fehler %": 0.2083124372038614
+       },
+       "max": {
+        "Feldgröße-Fehler %": 0.3756476193958136
+       },
+       "failures": [
+        1,
+        4
+       ]
+      }
+     }
+    },
+    "zuordnung": {
+     "fingerprint": "887dda35a0ec6ea9",
+     "quick": true,
+     "seconds": 33.5,
+     "rows": {
+      "0°": {
+       "counts": {
+        "Figur richtig": [
+         330,
+         330
+        ],
+        "Brett komplett": [
+         12,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "20°": {
+       "counts": {
+        "Figur richtig": [
+         337,
+         337
+        ],
+        "Brett komplett": [
+         12,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "30°": {
+       "counts": {
+        "Figur richtig": [
+         327,
+         327
+        ],
+        "Brett komplett": [
+         12,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "35°": {
+       "counts": {
+        "Figur richtig": [
+         333,
+         333
+        ],
+        "Brett komplett": [
+         12,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "50°": {
+       "counts": {
+        "Figur richtig": [
+         346,
+         346
+        ],
+        "Brett komplett": [
+         12,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "60°": {
+       "counts": {
+        "Figur richtig": [
+         320,
+         320
+        ],
+        "Brett komplett": [
+         12,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "70°": {
+       "counts": {
+        "Figur richtig": [
+         342,
+         342
+        ],
+        "Brett komplett": [
+         11,
+         12
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    },
+    "tracking": {
+     "fingerprint": "ee8c03309c6c991f",
+     "quick": true,
+     "seconds": 68.8,
+     "rows": {
+      "50°": {
+       "counts": {
+        "Zug richtig": [
+         50,
+         50
+        ],
+        "markiert": [
+         0,
+         50
+        ],
+        "still falsch": [
+         0,
+         50
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "60°": {
+       "counts": {
+        "Zug richtig": [
+         50,
+         50
+        ],
+        "markiert": [
+         0,
+         50
+        ],
+        "still falsch": [
+         0,
+         50
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "70°": {
+       "counts": {
+        "Zug richtig": [
+         50,
+         50
+        ],
+        "markiert": [
+         0,
+         50
+        ],
+        "still falsch": [
+         0,
+         50
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    },
+    "stress": {
+     "fingerprint": "925e830aa073481b",
+     "quick": true,
+     "seconds": 13.9,
+     "rows": {
+      "ohne": {
+       "counts": {
+        "Figur richtig": [
+         110,
+         110
+        ],
+        "Brett komplett": [
+         3,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Maske +1 px": {
+       "counts": {
+        "Figur richtig": [
+         106,
+         106
+        ],
+        "Brett komplett": [
+         4,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Maske -1 px": {
+       "counts": {
+        "Figur richtig": [
+         107,
+         107
+        ],
+        "Brett komplett": [
+         2,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Figurensatz +15 %": {
+       "counts": {
+        "Figur richtig": [
+         115,
+         115
+        ],
+        "Brett komplett": [
+         4,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Figurensatz -15 %": {
+       "counts": {
+        "Figur richtig": [
+         106,
+         106
+        ],
+        "Brett komplett": [
+         4,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Tiefe 3 px versetzt": {
+       "counts": {
+        "Figur richtig": [
+         109,
+         110
+        ],
+        "Brett komplett": [
+         3,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        1
+       ]
+      },
+      "Brett 8 mm gewölbt": {
+       "counts": {
+        "Figur richtig": [
+         110,
+         110
+        ],
+        "Brett komplett": [
+         3,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      },
+      "Brett 8 mm durchgehängt": {
+       "counts": {
+        "Figur richtig": [
+         117,
+         117
+        ],
+        "Brett komplett": [
+         4,
+         4
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": []
+      }
+     }
+    }
+   }
+  },
+  "original": {
+   "full": {
+    "ecken": {
+     "fingerprint": "9285ae24ec470d3d",
+     "quick": false,
+     "seconds": 5.1,
+     "rows": {
+      "0-45°": {
+       "counts": {
+        "Ecken gefunden": [
+         1958,
+         1960
+        ]
+       },
+       "values": {
+        "RMSE px": 0.3494514152402587,
+        "95%-Quantil px": 0.5120272333594519
+       },
+       "max": {
+        "RMSE px": 0.3494514152402587,
+        "95%-Quantil px": 0.5120272333594519
+       },
+       "failures": [
+        9,
+        26
+       ]
+      }
+     }
+    },
+    "brett": {
+     "fingerprint": "f62421036fb7b78f",
+     "quick": false,
+     "seconds": 11.4,
+     "rows": {
+      "Figuren 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         8,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        27,
+        28
+       ]
+      },
+      "Figuren 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         0,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29
+       ]
+      },
+      "Störmuster 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         3,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        0,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        27,
+        28,
+        29
+       ]
+      },
+      "Störmuster 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         1,
+         30
+        ],
+        "verschoben": [
+         0,
+         30
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        25,
+        26,
+        27,
+        28,
+        29
+       ]
+      }
+     }
+    }
+   },
+   "quick": {
+    "ecken": {
+     "fingerprint": "737b6a117114e729",
+     "quick": true,
+     "seconds": 0.9,
+     "rows": {
+      "0-45°": {
+       "counts": {
+        "Ecken gefunden": [
+         392,
+         392
+        ]
+       },
+       "values": {
+        "RMSE px": 0.350524178767913,
+        "95%-Quantil px": 0.5103076315896155
+       },
+       "max": {
+        "RMSE px": 0.350524178767913,
+        "95%-Quantil px": 0.5103076315896155
+       },
+       "failures": []
+      }
+     }
+    },
+    "brett": {
+     "fingerprint": "8d1dd30032bb5d81",
+     "quick": true,
+     "seconds": 2.4,
+     "rows": {
+      "Figuren 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         3,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        2,
+        4,
+        5
+       ]
+      },
+      "Figuren 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         0,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+       ]
+      },
+      "Störmuster 30-45°": {
+       "counts": {
+        "Brett richtig": [
+         2,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        0,
+        2,
+        3,
+        5
+       ]
+      },
+      "Störmuster 45-60°": {
+       "counts": {
+        "Brett richtig": [
+         0,
+         6
+        ],
+        "verschoben": [
+         0,
+         6
+        ]
+       },
+       "values": {},
+       "max": {},
+       "failures": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+       ]
+      }
+     }
+    }
+   }
+  }
+ }
+}
