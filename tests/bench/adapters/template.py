@@ -1,11 +1,11 @@
-"""Vorlage für deinen Adapter. Kopieren, z. B. nach bench/adapters/mine.py, und die Funktionen
-an deinen Code anbinden. Was fehlt oder NotImplementedError wirft, wird übersprungen.
+"""Template for your adapter. Copy it, e.g. to bench/adapters/mine.py, and connect the functions
+to your code. Anything missing or raising NotImplementedError is skipped.
 
-Konventionen (siehe bench/sim.py):
-- Brettrahmen: Ursprung Brettmitte, x zur h-Linie, y zur 8. Reihe, z nach oben, Meter.
-- Pose: X_cam = R @ X_brett + t. Felder: python-chess (a1 = 0, h8 = 63).
-- Frame.depth: z-Tiefe in Metern (0 = ungültig). Frame.labels: 0 = keine Figur, k = Figur k.
-- Frame.classes: k -> FEN-Symbol ('P' weißer Bauer, 'n' schwarzer Springer, ...).
+Conventions (see bench/sim.py):
+- Board frame: origin board centre, x towards the h-file, y towards the 8th rank, z up, metres.
+- Pose: X_cam = R @ X_board + t. Squares: python-chess (a1 = 0, h8 = 63).
+- Frame.depth: z-depth in metres (0 = invalid). Frame.labels: 0 = no piece, k = piece k.
+- Frame.classes: k -> FEN symbol ('P' white pawn, 'n' black knight, ...).
 """
 from __future__ import annotations
 
@@ -17,36 +17,36 @@ NAME = "mine"
 
 
 def corners(gray: np.ndarray) -> np.ndarray:
-    """Suite ecken: innere Brettecken als (N, 2)-Array in Pixeln."""
+    """Suite corners: inner board corners as an (N, 2) array in pixels."""
     raise NotImplementedError
 
 
 def board_homography(bgr: np.ndarray) -> np.ndarray | None:
-    """Suite brett: 3x3-Homographie Bild -> Gitter. Die 49 inneren Ecken liegen auf ganzzahligen
-    Gitterpunkten (i, j) mit -3 <= i, j <= 3; Drehung und Spiegelung sind hier egal. None = nicht gefunden."""
+    """Suite board: 3x3 homography image -> grid. The 49 inner corners lie on integer
+    grid points (i, j) with -3 <= i, j <= 3; rotation and reflection do not matter here. None = not found."""
     raise NotImplementedError
 
 
 def calibrate(frame: Frame) -> Calibration | None:
-    """Suite einmessen: Grundstellung, Feldgröße unbekannt (45-65 mm). Volle Pose mit Orientierung
-    (a1 links unten aus Sicht von Weiß), Feldgröße in Metern, optional Figurenmaße."""
+    """Suite calibration: starting position, square size unknown (45-65 mm). Full pose with orientation
+    (a1 bottom left as seen by White), square size in metres, optionally piece dimensions."""
     raise NotImplementedError
 
 
 def assign(frame: Frame, calib: Calibration) -> dict[int, int]:
-    """Suiten zuordnung, stress, einmessen: Label k -> Feld 0..63 für jede Figur in frame.classes."""
+    """Suites mapping, stress, calibration: label k -> square 0..63 for every piece in frame.classes."""
     raise NotImplementedError
 
 
 class Tracker:
-    """Suite tracking: Partie aus der Grundstellung, ein Zug pro Bild."""
+    """Suite tracking: game from the starting position, one move per image."""
 
     def __init__(self, calib: Calibration):
         raise NotImplementedError
 
     def reset(self, fen: str) -> None:
-        """Zustand auf diese Stellung setzen (Start und nach markiertem oder falschem Zug)."""
+        """Set the state to this position (start and after a flagged or wrong move)."""
 
     def step(self, frame: Frame) -> str | None:
-        """Vollständige FEN nach dem Zug, oder None, wenn unsicher (zählt als markiert, nicht als Fehler)."""
+        """Full FEN after the move, or None if unsure (counts as flagged, not as an error)."""
         return None

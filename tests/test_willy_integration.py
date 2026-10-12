@@ -97,7 +97,7 @@ class WillyIntegrationTest(unittest.TestCase):
                 return "frame"
 
         with self.robot.connected():
-            self.robot.home(decline="Schach: Test am Schreibtisch")
+            self.robot.home(decline="chess: test at the desk")
             pose = WillyCameraPose(WristCamera(), tcp_reader=self.robot.arm.get_tcp_pose)
             frame, camera_to_base = pose.grab(WristCamera())
             tool_to_base = np.asarray(self.robot.arm.get_tcp_pose().to_matrix())

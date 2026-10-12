@@ -1,4 +1,4 @@
-"""Dein Code vor den Änderungen (src/board, Commit f3d51b2), nur Stufe 1-2."""
+"""Your code before the changes (src/board, commit f3d51b2), stages 1-2 only."""
 import numpy as np
 
 from bench.reference.frozen.saddle import SaddlePointDetector

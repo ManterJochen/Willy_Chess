@@ -1,4 +1,4 @@
-"""Referenz Stufe 3-5: Einmessen, Figur aufs Feld, Zug-Tracking (wie im Dokument)."""
+"""Reference stages 3-5: calibration, piece to square, move tracking (as in the document)."""
 from __future__ import annotations
 
 import chess
@@ -10,13 +10,13 @@ from bench.reference.board import detect_grid
 from bench.sim import Calibration, Frame
 
 NOMINAL = {'p': (0.050, 0.0145), 'n': (0.060, 0.016), 'b': (0.070, 0.016),
-           'r': (0.055, 0.016), 'q': (0.085, 0.018), 'k': (0.095, 0.020)}   # bei 57-mm-Feldern
+           'r': (0.055, 0.016), 'q': (0.085, 0.018), 'k': (0.095, 0.020)}   # for 57 mm squares
 ROT90 = np.array([[0, -1], [1, 0]])
 
 
-# --------------------------------------------------------------------------- Geometrie
+# --------------------------------------------------------------------------- Geometry
 class Cam:
-    """Kamera relativ zum Brett; Einheit = Einheit von t (Meter oder Felder)."""
+    """Camera relative to the board; unit = unit of t (metres or squares)."""
     def __init__(self, K, R, t):
         self.K, self.R, self.t = K, R, np.asarray(t, float)
         self.C = -R.T @ self.t
@@ -40,8 +40,8 @@ def _dims(calib: Calibration, sym: str):
 
 
 def foot_xy(cam: Cam, mask, r, q=0.02):
-    """Vorderer Fußrand = Maskenpunkt mit kleinstem Abstand zum Kamerafußpunkt F (2 %-Quantil),
-    dann einen Fußradius weiter in Blickrichtung."""
+    """Front foot edge = mask point with the smallest distance to the camera foot point F (2 % quantile),
+    then one foot radius further in the viewing direction."""
     ys, xs = np.nonzero(mask)
     g = cam.to_plane(np.column_stack((xs, ys)).astype(float))
     F = cam.C[:2]
@@ -51,7 +51,7 @@ def foot_xy(cam: Cam, mask, r, q=0.02):
 
 
 def board_points(frame: Frame, cam: Cam, mask) -> np.ndarray:
-    """Tiefenpixel einer Maske als 3D-Punkte im Brettrahmen."""
+    """Depth pixels of a mask as 3D points in the board frame."""
     ys, xs = np.nonzero(mask & (frame.depth > 0))
     z = frame.depth[ys, xs].astype(float)
     X = (np.linalg.inv(frame.K) @ np.vstack((xs, ys, np.ones(len(xs))))).T * z[:, None]
@@ -59,7 +59,7 @@ def board_points(frame: Frame, cam: Cam, mask) -> np.ndarray:
 
 
 def depth_xy(P, F, h, r, n_min=30):
-    """Mitte aus Tiefe: Median seitlich, Median längs plus Abstand der Oberfläche zur Achse."""
+    """Centre from depth: median across, median along plus the distance from the surface to the axis."""
     P = P[(P[:, 2] > 0.004) & (P[:, 2] < 1.3 * h)]
     if len(P) < n_min:
         return None
@@ -71,7 +71,7 @@ def depth_xy(P, F, h, r, n_min=30):
 
 
 def fuse(x_foot, x_depth, F, tau=0.006):
-    """Zensierte Fusion: ein verdeckter Fuß verfälscht den Fußpunkt nur von der Kamera weg."""
+    """Censored fusion: a hidden foot only biases the foot point away from the camera."""
     if x_depth is None:
         return x_foot
     u = (x_depth - F) / np.linalg.norm(x_depth - F)
@@ -97,7 +97,7 @@ def _centres(square):
 
 
 def assign(frame: Frame, calib: Calibration) -> dict[int, int]:
-    """Freier Modus: jede Figur auf genau ein Feld, Hungarian auf quadrierten Abständen."""
+    """Free mode: every piece on exactly one square, Hungarian on squared distances."""
     pos = piece_positions(frame, calib)
     if not pos:
         return {}
@@ -108,7 +108,7 @@ def assign(frame: Frame, calib: Calibration) -> dict[int, int]:
     return {keys[i]: int(j) for i, j in zip(r, c)}
 
 
-# --------------------------------------------------------------------------- Einmessen
+# --------------------------------------------------------------------------- Calibration
 def _pnp(K, idx, pts):
     obj = np.column_stack((idx, np.zeros(len(idx)))).astype(np.float64)
     _, rv, tv = cv.solvePnP(obj, pts.astype(np.float64), K, None, flags=cv.SOLVEPNP_IPPE)
@@ -117,7 +117,7 @@ def _pnp(K, idx, pts):
 
 
 def _feet_sq(frame, R, t_sq):
-    """Fußpunkte aller Figuren in Feldeinheiten (Radius 0,25 Felder) und ihre Symbole."""
+    """Foot points of all pieces in square units (radius 0.25 squares) and their symbols."""
     cam = Cam(frame.K, R, t_sq)
     keys = [k for k in frame.classes if (frame.labels == k).any()]
     feet = np.array([foot_xy(cam, frame.labels == k, 0.25) for k in keys]).reshape(-1, 2)
@@ -125,7 +125,7 @@ def _feet_sq(frame, R, t_sq):
 
 
 def _parity(frame, R, t_sq):
-    """> 0, wenn Felder mit geradem f + r hell sind, also a1 nicht dunkel ist."""
+    """> 0 if squares with even f + r are light, i.e. a1 is not dark."""
     cam = Cam(frame.K, R, t_sq)
     gray = cv.cvtColor(frame.bgr, cv.COLOR_BGR2GRAY).astype(np.float32)
     h, w = gray.shape
@@ -144,7 +144,7 @@ def _parity(frame, R, t_sq):
 
 
 def _scale_from_depth(frame, R, t_sq):
-    """Feldgröße = Kamerahöhe in Metern (Ebene durch freie Brettpixel) / Kamerahöhe in Feldern."""
+    """Square size = camera height in metres (plane through free board pixels) / camera height in squares."""
     cam = Cam(frame.K, R, t_sq)
     border = cam.project(np.array([[-4, -4, 0], [4, -4, 0], [4, 4, 0], [-4, 4, 0]], float))
     area = np.zeros(frame.labels.shape, np.uint8)
@@ -162,12 +162,12 @@ def _scale_from_depth(frame, R, t_sq):
         r = (X - c0) @ n
         X = X[np.abs(r) < 3 * r.std() + 1e-12]
     c0 = X.mean(0); n = np.linalg.svd(X - c0, full_matrices=False)[2][-1]
-    angle = np.degrees(np.arccos(min(1.0, abs(n @ R[:, 2]))))     # Tiefen-Normale gegen Brett-z aus der Pose
+    angle = np.degrees(np.arccos(min(1.0, abs(n @ R[:, 2]))))     # depth normal against the board z from the pose
     return abs(c0 @ n) / abs(cam.C[2]), angle
 
 
 def _measure_dims(frame, cam: Cam):
-    """Höhe = 95 %-Quantil von z, Fußradius = halbe seitliche Ausdehnung im unteren Achtel."""
+    """Height = 95 % quantile of z, foot radius = half the lateral extent in the bottom eighth."""
     hs, rs = {}, {}
     F = cam.C[:2]
     for k, sym in frame.classes.items():
@@ -186,15 +186,15 @@ def _measure_dims(frame, cam: Cam):
 
 
 def calibrate(frame: Frame, min_corners=12, max_normal_deg=3.0, slack=3) -> Calibration | None:
-    """Einmessen in der Grundstellung, fail-closed.
+    """Calibration in the starting position, fail-closed.
 
-    Die Beschriftung des Gitters ist bis auf Spiegelung, Drehung und Verschiebung offen. Die Spiegelung
-    klärt die Kamerahöhe (C_z > 0). Drehung und Fenster wählt eine gemeinsame Suche über 4 Drehungen und
-    25 Verschiebungen: Es gewinnt die Beschriftung, unter der die meisten sichtbaren Figuren auf ihrem
-    Feld der Grundstellung stehen (Fußpunkte, bis zu `slack` Ausreißer durch verdeckte Füße).
-    Danach prüfen drei unabhängige Größen: Feldfarbe (a1 dunkel), Tiefen-Normale gegen die Pose und die
-    volle Zuordnung mit Tiefe, bei der jede sichtbare Figur exakt auf ihrem Startfeld stehen muss.
-    None statt Raten, wenn eine davon widerspricht oder die Wahl nicht eindeutig ist.
+    The labelling of the grid is open up to reflection, rotation and translation. The reflection is
+    settled by the camera height (C_z > 0). Rotation and window are chosen by a joint search over 4 rotations and
+    25 translations: the labelling wins under which the most visible pieces stand on their square of the
+    starting position (foot points, up to `slack` outliers from hidden feet).
+    Three independent quantities then check: square colour (a1 dark), depth normal against the pose and the
+    full assignment with depth, in which every visible piece must stand exactly on its starting square.
+    None instead of guessing if one of them contradicts or the choice is not unique.
     """
     det = detect_grid(frame.bgr)
     if det is None:
@@ -203,7 +203,7 @@ def calibrate(frame: Frame, min_corners=12, max_normal_deg=3.0, slack=3) -> Cali
     if len(idx) < min_corners:
         return None
     R, t = _pnp(frame.K, idx, pts)
-    if (-R.T @ t)[2] < 0:                                      # Kamera unter dem Brett => gespiegelt
+    if (-R.T @ t)[2] < 0:                                      # camera below the board => mirrored
         idx = idx * np.array([-1, 1]); R, t = _pnp(frame.K, idx, pts)
     feet, syms = _feet_sq(frame, R, t)
     if len(syms) == 0:
@@ -223,19 +223,19 @@ def calibrate(frame: Frame, min_corners=12, max_normal_deg=3.0, slack=3) -> Cali
                 cands.append((match, inside, rot, dx, dy))
     cands.sort(reverse=True)
     best, second = cands[0], cands[1]
-    if best[0] < len(syms) - slack or best[0] - second[0] < 3:  # zu viele daneben oder nicht eindeutig
+    if best[0] < len(syms) - slack or best[0] - second[0] < 3:  # too many off or not unique
         return None
     M = np.linalg.matrix_power(ROT90, best[2])
     idx = idx @ M.T - np.array(best[3:5])
     R, t = _pnp(frame.K, idx, pts)
-    if _parity(frame, R, t) > 0:                                 # Gegenprobe: a1 muss dunkel sein
+    if _parity(frame, R, t) > 0:                                 # cross-check: a1 must be dark
         return None
     s, angle = _scale_from_depth(frame, R, t)
     if s is None or angle > max_normal_deg:
         return None
     t = s * t
     calib = Calibration(R, t, float(s), _measure_dims(frame, Cam(frame.K, R, t)))
-    for k, sq in assign(frame, calib).items():                  # Gegenprobe: alle auf ihrem Startfeld
+    for k, sq in assign(frame, calib).items():                  # cross-check: all on their starting square
         p = start.piece_at(sq)
         if p is None or p.symbol() != frame.classes[k]:
             return None
@@ -244,10 +244,10 @@ def calibrate(frame: Frame, min_corners=12, max_normal_deg=3.0, slack=3) -> Cali
 
 # --------------------------------------------------------------------------- Tracking
 class Tracker:
-    """Zug-Tracking: legale Züge + 'kein Zug' als Kandidaten, kleinste NLL gewinnt, Gate statt Raten.
-    Eine nicht gesehene Figur ist billig, wenn ihr Modell an einer plausiblen Stelle im Feld zu weniger
-    als hidden_frac sichtbar wäre, also nicht von anderen Masken verdeckt. Das Modell (Kegelstumpf) ist
-    breiter als echte Figuren, daher ein Anteil statt der 25 px, unter denen der Detektor Figuren verliert."""
+    """Move tracking: legal moves + 'no move' as candidates, smallest NLL wins, gate instead of guessing.
+    An unseen piece is cheap if its model at a plausible spot in the square would be less than
+    hidden_frac visible, i.e. not covered by other masks. The model (truncated cone) is
+    wider than real pieces, hence a fraction instead of the 25 px below which the detector loses pieces."""
 
     def __init__(self, calib: Calibration, sigma=0.3, gate=10.0, hidden_ok=1.0, hidden_bad=50.0, hidden_frac=0.15):
         self.calib, self.sigma, self.gate, self.hidden_frac = calib, sigma, gate, hidden_frac
@@ -259,8 +259,8 @@ class Tracker:
         self.board = chess.Board(fen)
 
     def _hidden(self, cam, s, sym, fg, cache):
-        """Sichtbarer Anteil des Figurenmodells auf Feld s, minimiert über ihre mögliche Lage im Feld
-        (Mitte und 8 Punkte im Abstand 0,18 Felder): die Figur steht selten genau in der Mitte."""
+        """Visible fraction of the piece model on square s, minimised over its possible position in the square
+        (centre and 8 points at a distance of 0.18 squares): the piece rarely stands exactly in the centre."""
         key = (s, sym.lower())
         if key not in cache:
             h, r = _dims(self.calib, sym)

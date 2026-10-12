@@ -1,7 +1,8 @@
 """
 The game on screen: the digital board, what the camera sees, and what Willy is doing.
 
-Keys: Space = Zug fertig, R = neu einmessen, Esc = Ende, D/T/L/S (or Q/R/B/N) = Umwandlung.
+Keys: Space = move done, R = calibrate again, G = resign, D = offer a draw, Esc = end,
+W/B = colour, Q/R/B/N = promotion.
 Clicking two squares enters a move by hand, for when the camera could not recognise it.
 """
 import os
@@ -23,10 +24,9 @@ BACKGROUND, TEXT, MUTED = (30, 32, 36), (235, 235, 235), (150, 150, 160)
 LAST_MOVE, UNCERTAIN, SELECTED = (246, 246, 105, 110), (220, 60, 60), (70, 140, 255)
 GLYPHS = {"K": "♔", "Q": "♕", "R": "♖", "B": "♗", "N": "♘", "P": "♙",
           "k": "♚", "q": "♛", "r": "♜", "b": "♝", "n": "♞", "p": "♟"}
-LETTERS = {"k": "K", "q": "D", "r": "T", "b": "L", "n": "S", "p": "B"}     # German piece letters
+LETTERS = {"k": "K", "q": "Q", "r": "R", "b": "B", "n": "N", "p": "P"}     # without a font with chess glyphs
 SYMBOL_FONTS = ("segoeuisymbol", "applesymbols", "arialunicodems", "dejavusans", "notosanssymbols2", "freeserif")
-PROMOTION_KEYS = {pygame.K_d: "q", pygame.K_q: "q", pygame.K_t: "r", pygame.K_r: "r",
-                  pygame.K_l: "b", pygame.K_b: "b", pygame.K_s: "n", pygame.K_n: "n"}
+PROMOTION_KEYS = {pygame.K_q: "q", pygame.K_r: "r", pygame.K_b: "b", pygame.K_n: "n"}
 
 
 class PygameView:
@@ -87,13 +87,13 @@ class PygameView:
                 raise GameAborted
             if event.key == pygame.K_SPACE and "done" in accept:
                 return "done"
-            if event.key in (pygame.K_w, pygame.K_s) and {"white", "black"} <= accept:
+            if event.key in (pygame.K_w, pygame.K_b) and {"white", "black"} <= accept:
                 return "white" if event.key == pygame.K_w else "black"
             if event.key == pygame.K_r and "recalibrate" in accept:
                 return "recalibrate"
-            if event.key == pygame.K_a and "resign" in accept:
+            if event.key == pygame.K_g and "resign" in accept:
                 return "resign"
-            if event.key == pygame.K_u and "draw" in accept:
+            if event.key == pygame.K_d and "draw" in accept:
                 return "draw"
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and "move" in accept:
             square = self._square_at(event.pos, state.human_color)
@@ -167,18 +167,18 @@ class PygameView:
     def _draw_panel(self, state: ViewState) -> None:
         x, y = PANEL_X, MARGIN
         self.screen.blit(self.big.render("Willy_Chess", True, TEXT), (x, y))
-        turn = "Du bist am Zug" if state.board.turn == state.human_color else "Willy ist am Zug"
+        turn = "Your move" if state.board.turn == state.human_color else "Willy's move"
         if state.board.is_game_over():
-            turn = f"Partie vorbei: {state.board.result()}"
+            turn = f"Game over: {state.board.result()}"
         self.screen.blit(self.font.render(turn, True, MUTED), (x, y + 36))
         if state.evaluation:
-            self.screen.blit(self.font.render(f"Bewertung (Weiß): {state.evaluation}", True, MUTED), (x, y + 60))
+            self.screen.blit(self.font.render(f"Evaluation (White): {state.evaluation}", True, MUTED), (x, y + 60))
 
         y = self._draw_text(state.status, x, y + 96, 420, TEXT)
         y = self._draw_camera(state, x, y + 12)
         y = self._draw_moves(state, x, y + 12)
-        for i, help_text in enumerate(("Leertaste: Zug fertig    R: neu einmessen    A: aufgeben    U: Remis",
-                                       "Zwei Felder anklicken: Zug von Hand eingeben    Esc: Ende")):
+        for i, help_text in enumerate(("Space: move done    R: calibrate again    G: resign    D: offer a draw",
+                                       "Click two squares: enter a move by hand    Esc: end")):
             self.screen.blit(self.small.render(help_text, True, MUTED), (x, SIZE[1] - MARGIN - 8 + 18 * i))
 
     def _draw_text(self, text: str, x: int, y: int, width: int, colour) -> int:
@@ -211,8 +211,8 @@ class PygameView:
         h = int(image.shape[0] * w / image.shape[1])
         rgb = cv.cvtColor(cv.resize(image, (w, h), interpolation=cv.INTER_AREA), cv.COLOR_BGR2RGB)
         self.screen.blit(pygame.image.frombuffer(rgb.tobytes(), (w, h), "RGB"), (x, y))
-        caption = {"corrected": "Brettlage bestätigt", "predicted": "Brettlage vorhergesagt",
-                   "moved": "Brett verschoben!"}[obs.pose_status] + "   (blau: Weiß, orange: Schwarz)"
+        caption = {"corrected": "board pose confirmed", "predicted": "board pose predicted",
+                   "moved": "board moved!"}[obs.pose_status] + "   (blue: White, orange: Black)"
         self.screen.blit(self.small.render(caption, True, MUTED), (x, y + h + 4))
         return y + h + 22
 

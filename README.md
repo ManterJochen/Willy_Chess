@@ -5,8 +5,8 @@
 
 <br>
 
-**Say _what_ to pick. Willy perceives it, plans a collision-free 6-DoF grasp, gates every motion through
-a fail-closed safety pipeline, executes on a real or simulated arm, then checks the hold, recovers and logs.**
+**Play chess without lifting a finger. Stockfish makes the moves, Willy brings them to life. For all those guys who suck at chess
+but want to beat their friends.**
 
 <br>
 </div>
@@ -17,20 +17,17 @@ a fail-closed safety pipeline, executes on a real or simulated arm, then checks 
 **Validated on Windows 10&11, Python 3.11**
 
 ```bash
-git lfs install                      # once per machine: the detector weights in docs/weights come through Git LFS
+git lfs install                      # For weight fetching
 python3.11 -m venv .venv             # Windows: py -3.11 -m venv .venv
 source .venv/bin/activate            # Windows: .\.venv\Scripts\Activate.ps1
 git clone https://github.com/ManterJochen/Workaholic-Willy.git external/Workaholic-Willy
-pip install -r requirements.txt      # everything, with CUDA torch wheels that also import without a GPU
-                                     # macOS / no NVIDIA GPU: pip install -r requirements-cpu.txt
+pip install -r requirements.txt
 pip install -e .\external\Workaholic-Willy --no-deps
 ```
 
-On macOS `pyrealsense2` and `ur_rtde` have no wheels; leave them out for desk work (the cell needs them).
-
 ## ♟️ Playing
 
-1. Train the piece detector once, on the workstation (YOLO set in `data/`, weights land in `docs/weights/`):
+1. Train the piece detector once, on the workstation (For trainingset ask the maintainer):
    ```bash
    python -m src.pieces.train                 # --smoke first to check the setup
    ```
@@ -43,8 +40,9 @@ On macOS `pyrealsense2` and `ur_rtde` have no wheels; leave them out for desk wo
    ```bash
    python main.py --willy-data <Willy config directory of your cell>
    ```
-   W / S: your colour. Space bar: your move is done. R: calibrate again. A: resign. U: offer a draw (Willy
-   accepts unless it stands better). Click two squares: enter a move by hand. Esc: end.
+   W / B: your colour. Space bar: your move is done. R: calibrate again. G: resign. D: offer a draw (Willy
+   accepts unless it stands better). Q / R / B / N: the promotion piece. Click two squares: enter a move by
+   hand. Esc: end.
 
 Every finished game is saved as PGN in `data/games/`. Willy waits while a hand is over the board, names a
 move the rules forbid, and checks each of its own moves with the camera. The live view of the board
@@ -59,6 +57,8 @@ with `--willy-data` or once as `willy.data_dir` in the config; the game from
 the pawn stays and counts as the new piece), `engine.elo` (Willy's strength, 1320..3190) or the graveyard.
 
 ## 🧭 How it works
+
+The math behind every stage, explained step by step: [docs/board_detection_math.md](docs/board_detection_math.md).
 
 | Stage | Code | What it does |
 | --- | --- | --- |

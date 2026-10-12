@@ -1,5 +1,5 @@
-# Eingefrorene Kopie von src/board/symetric_solver.py aus ManterJochen/Willy_Chess, Commit f3d51b2 (9. Okt. 2026).
-# Nicht ändern: Referenz und Original-Adapter hängen davon ab, sonst driftet die Baseline.
+# Frozen copy of src/board/symetric_solver.py from ManterJochen/Willy_Chess, commit f3d51b2 (9 Oct 2026).
+# Do not change: the reference and the original adapter depend on it, or the baseline drifts.
 import numpy as np
 import cv2 as cv
 from typing import Tuple, Optional, Dict, List, Any

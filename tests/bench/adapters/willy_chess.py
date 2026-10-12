@@ -1,4 +1,4 @@
-"""Adapter: die Produktiv-Implementierung aus src/ gegen den Benchmark.
+"""Adapter: the production implementation from src/ against the benchmark.
 
     cd tests
     python -m bench.run --adapter bench/adapters/willy_chess.py --baseline <baseline_local.json>
@@ -24,7 +24,7 @@ from src.mapping.geometry import BoardCalibration  # noqa: E402
 from src.mapping.pieces import assign as _assign  # noqa: E402
 
 NAME = "willy_chess"
-# Kosten einer falsch erkannten Figurenklasse im Tracking (float("inf") = harter Ausschluss wie die Referenz).
+# Cost of a misdetected piece class in tracking (float("inf") = hard exclusion like the reference).
 CLASS_COST = float(os.environ.get("WILLY_CHESS_CLASS_COST", "4.0"))
 
 
@@ -51,7 +51,7 @@ def assign(frame: Frame, calib: Calibration) -> dict[int, int]:
 
 
 class Tracker:
-    """Der Simulator rendert nach einer Umwandlung die neue Figur, also promotion_mode='piece_swapped'."""
+    """After a promotion the simulator renders the new piece, hence promotion_mode='piece_swapped'."""
 
     def __init__(self, calib: Calibration):
         self.tracker = MoveTracker(_calib(calib), class_cost=CLASS_COST, promotion_mode="piece_swapped")
