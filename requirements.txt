@@ -1,4 +1,8 @@
-# -r external/Workaholic-Willy/requirements.txt
-numpy
-opencv-python
-python-chess==1.999
+# Workaholic-Willy's pinned stack (numpy, scipy, opencv-contrib-python, PyYAML, torch with CUDA, transformers, ...).
+# Clone it to external/Workaholic-Willy first (README). Without CUDA: requirements-cpu.txt.
+# No opencv-python here: next to Willy's opencv-contrib-python both would write the same cv2 package.
+-r external/Workaholic-Willy/requirements.txt
+
+# Willy_Chess on top of it
+chess==1.11.2
+pygame==2.6.1
