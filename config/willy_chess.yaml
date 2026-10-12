@@ -1,0 +1,51 @@
+# Willy_Chess: what the game needs besides Willy's own config directory (camera, hand-eye calibration,
+# robot, hand geometry, look poses, whether the arm plans with a camera world).
+# Every key is optional; a missing one keeps the default in src/game/config.py, an unknown one is
+# refused, so a typo cannot go unnoticed.
+
+willy:
+  data_dir: null                # Willy's config directory of this cell (relative to the repo or absolute);
+                                # `--willy-data DIR` on the command line overrides it
+
+detector:
+  weights: docs/weights/chess_pieces_rtdetr    # DetectorTraining out_dir (Git LFS)
+  threshold: null                              # score a piece must clear; null = the detector's own
+  segmenter: null                              # SAM2 folder or Hugging Face id; null = Willy's default
+
+game:
+  human_color: white            # preselected when the game asks at the start (W / S)
+  # No spare queen: the pawn stays on the promotion square and counts as the new piece.
+  # piece_swapped: the promoted piece physically replaces the pawn (Willy asks you to swap it).
+  promotion_mode: pawn_stays    # pawn_stays | piece_swapped
+  pgn_dir: data/games           # every finished game is saved there as PGN
+
+engine:
+  path: null                    # null: $STOCKFISH_PATH, then stockfish on PATH, then external/chess/...
+  think_time_s: 1.0
+  elo: null                     # Willy's playing strength, e.g. 1500 (Stockfish: 1320..3190); null = full strength
+
+tracking:
+  sigma_squares: 0.3            # spread of a piece around its square centre
+  gate: 10.0                    # largest geometric NLL that is accepted without asking
+  class_cost: 4.0               # cost of a piece seen with another type (same colour)
+
+robot:
+  standoff_mm: 80.0             # approach from this far above, then a straight line
+  finger_clearance_mm: 8.0      # the hand opens this much wider than the piece on each side
+  place_air_mm: 2.0             # release this high above the board
+  grasp_height_fraction:        # grasp at this fraction of the measured piece height
+    p: 0.45
+    n: 0.45
+    b: 0.45
+    r: 0.45
+    q: 0.45
+    k: 0.45
+  graveyard:
+    side: "+x"                  # +x beyond the h-file, -x beyond the a-file, +y beyond rank 8, -y beyond rank 1
+    distance_squares: 1.5       # from the edge of the 8x8 squares to the first column of slots
+    columns: 2
+    table_offset_m: -0.012      # table height relative to the board surface (board thickness)
+
+record:                         # training data from real games, labels from the tracked position
+  enabled: false
+  out_dir: data/recorded        # YOLO layout: images/, labels/, data.yaml
