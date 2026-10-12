@@ -1,6 +1,6 @@
 import numpy as np
 import cv2 as cv
-from typing import Tuple, Optional, Dict, List, Any
+from typing import Tuple, Optional, List
 
 class ChessboardSolver:
     def __init__(
@@ -36,23 +36,60 @@ class ChessboardSolver:
 
         return np.round(projected_points), basis_vectors, info
 
-    def estimate_homography(self, lattice_points: np.ndarray, chess_grid_points: np.ndarray) -> np.ndarray:
+    def estimate_homography(
+            self,
+            lattice_points: np.ndarray,
+            chess_grid_points: np.ndarray,
+            ransac_px: float = 2.0
+    ) -> np.ndarray:
         """
         Estimate the homography matrix that maps the lattice points to the chess grid points.
+
+        RANSAC measures its threshold in the target space. Fitted image -> grid, the default
+        of 3 would mean 3 squares, so every point (an off-by-one index or clutter) is an
+        inlier. The noise lives in pixels, so the fit runs grid -> image with a threshold in
+        pixels and the result is inverted.
 
         Args:
             lattice_points (np.ndarray): The input lattice points.
             chess_grid_points (np.ndarray): The corresponding chess grid points.
+            ransac_px (float): RANSAC inlier threshold in pixels.
 
         Returns:
-            np.ndarray: The estimated homography matrix of shape (3, 3).
+            np.ndarray: The estimated homography matrix (image -> grid) of shape (3, 3).
         """
         if len(lattice_points) < 4:
             return np.eye(3)
-        H, _ = cv.findHomography(lattice_points.astype(np.float32), chess_grid_points.astype(np.float32), method=cv.RANSAC)
-        if H is None:
+        H_grid_to_image, _ = cv.findHomography(
+            chess_grid_points.astype(np.float32),
+            lattice_points.astype(np.float32),
+            method=cv.RANSAC,
+            ransacReprojThreshold=ransac_px,
+            maxIters=5000,
+            confidence=0.999,
+        )
+        if H_grid_to_image is None:
             return np.eye(3)
-        return H
+        try:
+            H = np.linalg.inv(H_grid_to_image)
+        except np.linalg.LinAlgError:
+            return np.eye(3)
+        return H / H[2, 2]
+
+    def estimate_lattice(self, lattice_points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Estimate the lattice basis and the unrounded lattice coordinates of the points.
+
+        Args:
+            lattice_points (np.ndarray): The input lattice points of shape (N, 2).
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]:
+            - Basis vectors of shape (2, 2).
+            - Lattice coordinates of shape (N, 2); points on the lattice are close to integers.
+        """
+        basis_vectors, projected_points, _, _ = self._get_lattice_and_reproject(lattice_points, num_vectors=2)
+        return basis_vectors, projected_points
 
 
     # ============================================================================

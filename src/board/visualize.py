@@ -43,56 +43,6 @@ def draw_checkerboard_on_image(image, homography, alpha_blend=0.4) -> np.ndarray
 
 def draw_board_grid_on_image(image, homography, alpha_blend=0.4) -> np.ndarray:
     """
-    Draws a chessboard grid pattern on an image using a homography.
-    """
-    if homography is None:
-        return image
-    
-    rows, cols = 8, 8
-    # Notice the order: y, x for meshgrid to match the vertex ordering
-    y, x = np.meshgrid(np.arange(-4, -4+rows+1), np.arange(-4, -4+cols+1))
-    object_points = np.stack((x.ravel(), y.ravel()), axis=-1).astype(np.float32)
-    homography_inverse = np.linalg.inv(homography)
-    warped_points = cv2.perspectiveTransform(
-        object_points.reshape(-1, 1, 2),
-        homography_inverse
-    )
-    # Ensure image is in 8-bit RGB format for consistent drawing
-    if len(image.shape) == 2:
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    elif image.shape[2] == 4:
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
-    else:
-        image_rgb = image.copy()
-        
-    if image_rgb.dtype != np.uint8:
-        if np.max(image_rgb) <= 1.01:
-            image_rgb = (image_rgb * 255).astype(np.uint8)
-        else:
-            image_rgb = image_rgb.astype(np.uint8)
-
-    overlay = image_rgb.copy()
-    
-    if warped_points is not None:
-        warped_points = warped_points.reshape(-1, 2).astype(np.int32)
-        verts_per_row = cols + 1
-        for r in range(rows):
-            for c in range(cols):
-                p1_idx = r * verts_per_row + c
-                p2_idx = p1_idx + 1
-                p3_idx = (r + 1) * verts_per_row + c
-                p4_idx = p3_idx + 1
-                corners = np.array([warped_points[p1_idx], warped_points[p2_idx], warped_points[p4_idx], warped_points[p3_idx]])
-                
-                # Image is in RGB, so (0, 255, 0) is green, (255, 0, 0) is red
-                color = (0, 255, 0) if (r + c) % 2 == 0 else (255, 0, 0)
-                cv2.fillPoly(overlay, [corners], color)
-
-    final_img = cv2.addWeighted(overlay, alpha_blend, image_rgb, 1 - alpha_blend, 0)
-    return final_img
-
-def draw_board_grid_on_image(image, homography, alpha_blend=0.4) -> np.ndarray:
-    """
     Draws a board grid pattern on an image using a homography.
     The board is defined as a centered 8x8 grid in "lattice space".
     """
@@ -129,8 +79,6 @@ def draw_board_grid_on_image(image, homography, alpha_blend=0.4) -> np.ndarray:
         verts_per_row = cols + 1
         green = (0, 255, 0)
         yellow = (255, 255, 0)
-        red = (255, 0, 0)
-        blue = (0, 0, 255)
         line_thickness = 4
 
         # Draw internal horizontal grid lines (rows 1..rows-1)
@@ -208,7 +156,8 @@ def visualize_reconstruction(image: np.ndarray, lattice_points: np.ndarray,
                         (chess_grid_points[:, 1] >= -4) & (chess_grid_points[:, 1] <= 4)
             
             if homography_matrix is not None:
-                warped_pts = cv2.perspectiveTransform(chess_grid_points.reshape(-1, 1, 2).astype(np.float32), homography_matrix).reshape(-1, 2)
+                # H maps image -> grid, so the grid points go back into the image with its inverse
+                warped_pts = cv2.perspectiveTransform(chess_grid_points.reshape(-1, 1, 2).astype(np.float32), np.linalg.inv(homography_matrix)).reshape(-1, 2)
                 dists = np.linalg.norm(warped_pts - lattice_points, axis=1)
                 inliers = dists < 10.0 # Pixel distance threshold
                 valid_mask = grid_mask & inliers
@@ -292,8 +241,6 @@ def visualize_reconstruction(image: np.ndarray, lattice_points: np.ndarray,
     axes[5].set_title("Overhead Warped View")
     if homography_matrix is not None:
         try:
-            H_inv = np.linalg.inv(homography_matrix)
-            
             # Map grid space [-4, 4] to a 500x500 image with 50px margins
             dest_size = 500
             margin = 50
@@ -306,7 +253,8 @@ def visualize_reconstruction(image: np.ndarray, lattice_points: np.ndarray,
                 [0.0, 0.0, 1.0]
             ])
             
-            H_img_to_dest = grid_to_dest @ H_inv
+            # H already maps image -> grid
+            H_img_to_dest = grid_to_dest @ homography_matrix
             
             warped_img = cv2.warpPerspective(image, H_img_to_dest, (dest_size, dest_size))
             axes[5].imshow(warped_img)
@@ -329,9 +277,8 @@ def visualize_reconstruction(image: np.ndarray, lattice_points: np.ndarray,
     if output_path:
         plt.savefig(output_path, bbox_inches='tight')
         print(f"Saved visualization to {output_path}")
-    else:
-        plt.show()
-    
+
+    # Shown in the OpenCV window below: a plt.show() here would block every frame of a live loop.
     fig.canvas.draw()
 
     # Matplotlib canvas -> NumPy image

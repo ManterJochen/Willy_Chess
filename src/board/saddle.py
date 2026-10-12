@@ -1,11 +1,15 @@
 import cv2 as cv
 import numpy as np
 
+# Half subpixel window per pixel of the shortest projected square side. The whole
+# window (2w + 1) has to stay below half a square, or it reaches the next corner.
+SUBPIX_FACTOR = 0.12
+
 
 class SaddlePointDetector:
     """
     Detect saddle points using the Hessian matrix, non-maximum suppression,
-    subpixel refinement, and optional symmetry filtering.
+    optional symmetry filtering, and cornerSubPix (Förstner) refinement.
 
     Attributes:
         image (np.ndarray): Input image.
@@ -14,6 +18,10 @@ class SaddlePointDetector:
         threshold (float): Minimum saddle response.
         nms_size (int): Window size for non-maximum suppression.
         win_size (int): Border margin used during filtering.
+        subpix_win (int | None): Half window size for the subpixel refinement.
+            None adapts it to the board: SUBPIX_FACTOR x the median distance to
+            the nearest neighbouring corner, which is the shortest projected
+            square side, so a tilted view gets a smaller window.
     """
 
     def __init__(
@@ -24,6 +32,7 @@ class SaddlePointDetector:
         threshold: float = 10000.0,
         nms_size: int = 11,
         win_size: int = 10,
+        subpix_win: int | None = None,
     ):
         if image is None or not isinstance(image, np.ndarray):
             raise ValueError("image must be a valid NumPy array.")
@@ -43,12 +52,16 @@ class SaddlePointDetector:
         if win_size < 5:
             raise ValueError("win_size must be at least 5.")
 
+        if subpix_win is not None and subpix_win < 2:
+            raise ValueError("subpix_win must be at least 2.")
+
         self.image = image
         self.max_pts = max_pts
         self.apply_filter = apply_filter
         self.threshold = threshold
         self.nms_size = nms_size
         self.win_size = win_size
+        self.subpix_win = subpix_win
 
     def detect(self) -> np.ndarray:
         """
@@ -81,7 +94,7 @@ class SaddlePointDetector:
         if h <= 2 * self.win_size + 1 or w <= 2 * self.win_size + 1:
             return np.empty((0, 2), dtype=np.float64)
 
-        saddle, sub_s, sub_t, gx, gy = self._get_saddle(gray)
+        saddle, gx, gy = self._get_saddle(gray)
 
         # Keep only local maxima.
         self._non_max_suppression(saddle, self.nms_size)
@@ -98,14 +111,6 @@ class SaddlePointDetector:
         # Convert (y, x) to (x, y).
         points = np.column_stack((xs, ys)).astype(np.float64)
 
-        # Refine locations to subpixel coordinates.
-        offsets = np.column_stack((
-            sub_s[ys, xs],
-            sub_t[ys, xs],
-        ))
-
-        points += offsets
-
         # Sort candidates by saddle response, strongest first.
         strengths = saddle[ys, xs]
         sorted_indices = np.argsort(strengths)[::-1]
@@ -121,6 +126,12 @@ class SaddlePointDetector:
                 win_size=self.win_size,
             )
 
+        # Refine the remaining locations to subpixel coordinates.
+        points = self._refine_subpixel(
+            gray_image.astype(np.float32, copy=False),
+            points,
+        )
+
         # Return only the requested number of points.
         if self.max_pts > 0:
             points = points[:self.max_pts]
@@ -130,9 +141,9 @@ class SaddlePointDetector:
     def _get_saddle(
         self,
         gray_image: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Compute the Hessian determinant response and subpixel offsets.
+        Compute the Hessian determinant response and the image gradients.
         """
         gx = cv.Sobel(gray_image, cv.CV_32F, 1, 0)
         gy = cv.Sobel(gray_image, cv.CV_32F, 0, 1)
@@ -145,22 +156,59 @@ class SaddlePointDetector:
         det = gxx * gyy - gxy * gxy
         saddle = -det
 
-        # Avoid division by zero where the Hessian is singular.
-        sub_s = np.divide(
-            gy * gxy - gx * gyy,
-            det,
-            out=np.zeros_like(det),
-            where=det != 0,
+        return saddle, gx, gy
+
+    def _refine_subpixel(
+        self,
+        gray_image: np.ndarray,
+        points: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Refine points to subpixel accuracy with cv.cornerSubPix (Förstner).
+
+        At the true corner q every gradient g_i in the window is orthogonal to
+        (q - p_i), so q solves sum(g_i g_i^T) q = sum(g_i g_i^T p_i). This uses
+        about 120 pixels instead of one second derivative, and needs no Sobel
+        gain correction (a 3x3 Sobel scales every derivative by 8).
+
+        Points that move further than the window converged on something else
+        and are dropped.
+        """
+        if len(points) == 0:
+            return points
+
+        win = self.subpix_win if self.subpix_win is not None else self._adaptive_win(points)
+
+        corners = points.astype(np.float32).reshape(-1, 1, 2)
+        criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 50, 1e-3)
+        cv.cornerSubPix(
+            gray_image,
+            corners,
+            (win, win),
+            (-1, -1),
+            criteria,
         )
 
-        sub_t = np.divide(
-            gx * gxy - gy * gxx,
-            det,
-            out=np.zeros_like(det),
-            where=det != 0,
-        )
+        refined = corners.reshape(-1, 2).astype(np.float64)
+        moved = np.max(np.abs(refined - points), axis=1)
 
-        return saddle, sub_s, sub_t, gx, gy
+        return refined[moved <= win]
+
+    def _adaptive_win(self, points: np.ndarray) -> int:
+        """
+        Half window from the median nearest-neighbour distance of the corners.
+
+        Each corner's nearest neighbour lies along the more foreshortened board
+        axis, so this follows the shortest projected square side.
+        """
+        if len(points) < 2:
+            return 3
+
+        dists = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
+        np.fill_diagonal(dists, np.inf)
+        nearest = np.median(dists.min(axis=1))
+
+        return int(max(2, round(SUBPIX_FACTOR * nearest)))
 
     def _non_max_suppression(
         self,
