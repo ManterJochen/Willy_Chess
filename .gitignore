@@ -220,3 +220,12 @@ __marimo__/
 data/
 data/*
 external/Workaholic-Willy
+
+# Detector training: only the best epoch is committed, its model.safetensors through Git LFS.
+# last/ and checkpoint_last.pt only serve --resume on the workstation, *_smoke/ only checks the setup.
+docs/weights/*/last/
+docs/weights/*/checkpoint_last.pt
+docs/weights/*_smoke/
+
+# macOS Finder metadata
+.DS_Store
