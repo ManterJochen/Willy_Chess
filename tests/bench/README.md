@@ -1,92 +1,92 @@
-# Willy_Chess-Benchmark: vom Brett zur FEN
+# Willy_Chess benchmark: from board to FEN
 
-Simulierte Szenen mit exakt bekannter Wahrheit, feste Seeds, eine eingefrorene Referenz-Implementierung
-und eine Baseline. Deine Implementierung läuft über einen Adapter gegen dieselben Szenen; das Skript sagt,
-wo sie signifikant schlechter ist, und endet dann mit Exit-Code 1.
+Simulated scenes with exactly known ground truth, fixed seeds, a frozen reference implementation
+and a baseline. Your implementation runs through an adapter against the same scenes; the script tells you
+where it is significantly worse, and then ends with exit code 1.
 
 ## Installation
 
-Den Ordner `bench/` in die Wurzel des Repos legen (neben `src/`), dann:
+The benchmark lives in `tests/bench/`. From `tests/`:
 
 ```bash
 pip install -r bench/requirements.txt
-python -m bench.run --quick            # Referenz, alle Suiten, etwa 3 Minuten
+python -m bench.run --quick            # reference, all suites, about 3 minutes
 ```
 
-Alle Befehle laufen aus der Repo-Wurzel, unter Windows genauso.
+All commands run from `tests/`, on Windows just the same.
 
-## Deine Implementierung testen
+## Testing your implementation
 
-1. `bench/adapters/template.py` nach `bench/adapters/mine.py` kopieren und die Funktionen an deinen Code
-   anbinden. Was fehlt oder `NotImplementedError` wirft, wird übersprungen.
-2. Einmal die Referenz auf deinem Rechner laufen lassen (die Szenen hängen leicht von NumPy- und
-   OpenCV-Version ab, so vergleichst du garantiert auf identischen Eingaben):
+1. Copy `bench/adapters/template.py` to `bench/adapters/mine.py` and connect the functions to your
+   code. Anything missing or raising `NotImplementedError` is skipped.
+2. Run the reference once on your machine (the scenes depend slightly on the NumPy and
+   OpenCV version, this way you are sure to compare on identical inputs):
    ```bash
    python -m bench.run --write-baseline bench/baseline_local.json
    ```
-3. Deinen Adapter dagegen laufen lassen:
+3. Run your adapter against it:
    ```bash
    python -m bench.run --adapter bench/adapters/mine.py --baseline bench/baseline_local.json
    ```
 
-Steht hinter einer Suite `[Eingaben identisch]`, liefen exakt dieselben Bilder wie in der Baseline.
-`--quick` nimmt ein Fünftel der Szenen mit denselben Seeds, für schnelle Runden beim Entwickeln.
-`--dump-failures DIR` legt jede fehlgeschlagene Szene als PNG und NPZ ab (Bild, Tiefe, Labels, Wahrheit).
+If a suite is followed by `[inputs identical]`, exactly the same images ran as in the baseline.
+`--quick` takes a fifth of the scenes with the same seeds, for quick rounds while developing.
+`--dump-failures DIR` stores every failed scene as PNG and NPZ (image, depth, labels, truth).
 
-## Die Suiten
+## The suites
 
-| Suite | Prüft | Szenen (voll) | Adapter-Funktion |
+| Suite | Checks | Scenes (full) | Adapter function |
 | --- | --- | --- | --- |
-| `ecken` | Subpixel-Genauigkeit der inneren Ecken, leeres Brett 0-45° | 40 | `corners(gray)` |
-| `brett` | Brett aus dem Bild, mit flachen Figuren oder Störmustern, 30-60° | 4 x 30 | `board_homography(bgr)` |
-| `einmessen` | Grundstellung, Feldgröße 45-65 mm unbekannt, Figurensatz ±15 %: Pose, Orientierung, Skala | 4 x 30 | `calibrate(frame)` + `assign` |
-| `zuordnung` | Figur aufs Feld bei bekannter Pose, zufällige Partiestellungen, 0-70° | 7 x 60 | `assign(frame, calib)` |
-| `tracking` | Partien aus der Grundstellung, ein Zug pro Bild, 50/60/70° | 3 x 8 Partien x 50 Züge | `Tracker` |
-| `stress` | 70°, je eine verletzte Annahme: Maskenrand, Figurensatz, Tiefenversatz, Wölbung | 8 x 20 | `assign(frame, calib)` |
+| `corners` | Subpixel accuracy of the inner corners, empty board 0-45° | 40 | `corners(gray)` |
+| `board` | Board from the image, with flat pieces or clutter, 30-60° | 4 x 30 | `board_homography(bgr)` |
+| `calibration` | Starting position, square size 45-65 mm unknown, piece set ±15 %: pose, orientation, scale | 4 x 30 | `calibrate(frame)` + `assign` |
+| `mapping` | Piece to square at a known pose, random game positions, 0-70° | 7 x 60 | `assign(frame, calib)` |
+| `tracking` | Games from the starting position, one move per image, 50/60/70° | 3 x 8 games x 50 moves | `Tracker` |
+| `stress` | 70°, one violated assumption each: mask edge, piece set, depth shift, bulge | 8 x 20 | `assign(frame, calib)` |
 
-Volle Laufzeit der Referenz etwa 13 Minuten, davon 7 für `tracking`.
+Full run time of the reference about 13 minutes, 7 of them for `tracking`.
 
-## Baseline (Referenz, voller Lauf)
+## Baseline (reference, full run)
 
-| Suite | Ergebnis |
+| Suite | Result |
 | --- | --- |
-| `ecken` | 1958/1960 Ecken gefunden, RMSE 0,042 px (Original: 0,349 px) |
-| `brett` | 120/120 Bretter richtig (Original: 12/120) |
-| `einmessen` | 30/30/29/27 eingemessen bei 35/50/60/70°, 0 falsch eingemessen, Feldgröße im Mittel 0,22-0,29 % daneben |
-| `zuordnung` | 11 812/11 812 Figuren richtig |
-| `tracking` | 1196/1200 Züge richtig, 4 markiert, 0 still falsch |
-| `stress` | schwächster Fall: Tiefe 3 px gegen das Farbbild versetzt, 98,2 % der Figuren richtig |
+| `corners` | 1958/1960 corners found, RMSE 0.042 px (original: 0.349 px) |
+| `board` | 120/120 boards correct (original: 12/120) |
+| `calibration` | 30/30/29/27 calibrated at 35/50/60/70°, 0 miscalibrated, square size off by 0.22-0.29 % on average |
+| `mapping` | 11,812/11,812 pieces correct |
+| `tracking` | 1196/1200 moves correct, 4 flagged, 0 silently wrong |
+| `stress` | weakest case: depth shifted 3 px against the colour image, 98.2 % of the pieces correct |
 
-## Konventionen
+## Conventions
 
-- Bild 640 x 480, `K` mit f = 600 px, keine Verzeichnung.
-- Brettrahmen: Ursprung in der Brettmitte, x zur h-Linie, y zur 8. Reihe, z nach oben, Meter.
-- Pose: `X_cam = R @ X_brett + t`. Felder in python-chess-Nummerierung (a1 = 0, h8 = 63).
-- `Frame.depth`: z-Tiefe in Metern, 0 = ungültig. `Frame.labels`: 0 = keine Figur, k = Figur k.
-  `Frame.classes`: k -> FEN-Symbol (`'P'` weißer Bauer, `'n'` schwarzer Springer).
-- Figuren mit weniger als 25 sichtbaren Pixeln gelten als nicht erkannt und fehlen in `labels`.
+- Image 640 x 480, `K` with f = 600 px, no distortion.
+- Board frame: origin at the board centre, x towards the h-file, y towards the 8th rank, z up, metres.
+- Pose: `X_cam = R @ X_board + t`. Squares in python-chess numbering (a1 = 0, h8 = 63).
+- `Frame.depth`: z-depth in metres, 0 = invalid. `Frame.labels`: 0 = no piece, k = piece k.
+  `Frame.classes`: k -> FEN symbol (`'P'` white pawn, `'n'` black knight).
+- Pieces with fewer than 25 visible pixels count as not detected and are missing from `labels`.
 
-## Auswertung
+## Evaluation
 
-Jede Zählmetrik steht mit 95 %-Konfidenzintervall (Clopper-Pearson) da. Der Vergleich mit der Baseline
-ist ein einseitiger Fisher-Test; `SCHLECHTER` heißt p < 0,05. Bei `tracking` gilt eine `None`-Antwort als
-markiert, nicht als Fehler; nach markiertem oder falschem Zug setzt der Harness den Tracker auf die
-Wahrheit zurück, wie eine Bestätigung durch den Menschen. Am wichtigsten sind `still falsch` und
-`falsch eingemessen`: Das sind die Fälle, in denen Stockfish eine falsche Stellung bekäme.
+Every count metric is shown with a 95 % confidence interval (Clopper-Pearson). The comparison with the baseline
+is a one-sided Fisher test; `WORSE` means p < 0.05. In `tracking` a `None` answer counts as
+flagged, not as an error; after a flagged or wrong move the harness resets the tracker to the
+truth, like a confirmation by the human. Most important are `silently wrong` and
+`miscalibrated`: these are the cases in which Stockfish would get a wrong position.
 
-## Grenzen
+## Limits
 
-Masken und Klassen sind perfekt, wie im Dokument angenommen. Nicht simuliert: Linsenverzeichnung,
-Glanzlichter, Tiefenlöcher auf schwarzen Figuren, Hände, der asymmetrische Springer. Das Brettbild bleibt
-bei der Wölbung eben, nur Figuren und Tiefe folgen ihr. Der Maßstab für den echten Betrieb bleibt ein
-Testsatz aus echten Partien.
+Masks and classes are perfect, as assumed in the document. Not simulated: lens distortion,
+specular highlights, depth holes on black pieces, hands, the asymmetric knight. The board image stays
+flat under the bulge, only pieces and depth follow it. The yardstick for real operation remains a
+test set from real games.
 
-## Aufbau
+## Structure
 
-- `sim.py`: Szenen-Generator (Brett, Figuren als taillierte Rotationskörper, Tiefe mit Rauschen,
-  Flying Pixels und ToF-Fehler, Partien).
-- `suites.py`: die sechs Suiten; jede Szene hat den Seed `[Suite, Zeile, Szene]`.
-- `run.py`: Aufruf, Bericht, Vergleich, Baseline schreiben.
-- `reference/`: die Algorithmen aus dem Dokument, eingefroren; `reference/frozen/` ist eine Kopie von
-  `src/board` aus Commit f3d51b2, damit die Baseline nicht wandert, wenn du `src/board` änderst.
-- `adapters/`: `reference`, `original` (dein Code vor den Änderungen) und `template`.
+- `sim.py`: scene generator (board, pieces as waisted solids of revolution, depth with noise,
+  flying pixels and ToF errors, games).
+- `suites.py`: the six suites; every scene has the seed `[suite, row, scene]`.
+- `run.py`: invocation, report, comparison, writing the baseline.
+- `reference/`: the algorithms from the document, frozen; `reference/frozen/` is a copy of
+  `src/board` from commit f3d51b2, so that the baseline does not drift when you change `src/board`.
+- `adapters/`: `reference`, `original` (your code before the changes) and `template`.

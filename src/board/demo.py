@@ -29,12 +29,12 @@ def frames(camera_id: int = 0, replay: Path | None = None) -> Iterator[np.ndarra
         return
     cap = cv.VideoCapture(camera_id)
     if not cap.isOpened():
-        raise RuntimeError(f"Kamera mit ID {camera_id} konnte nicht geöffnet werden.")
+        raise RuntimeError(f"Could not open camera {camera_id}.")
     try:
         while True:
             ret, frame = cap.read()
             if not ret:
-                print("Kein Kamerabild empfangen.")
+                print("No camera frame received.")
                 return
             yield cv.resize(frame, (640, 480), interpolation=cv.INTER_AREA)
     finally:

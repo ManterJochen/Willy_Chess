@@ -72,8 +72,8 @@ def save_pgn(board: chess.Board, result: str, human: bool, folder: Path) -> Path
     game = chess.pgn.Game.from_board(board)
     now = datetime.now()
     game.headers.update(Event="Willy_Chess", Date=now.strftime("%Y.%m.%d"), Result=result,
-                        White="Mensch" if human == chess.WHITE else "Willy",
-                        Black="Willy" if human == chess.WHITE else "Mensch")
+                        White="Human" if human == chess.WHITE else "Willy",
+                        Black="Willy" if human == chess.WHITE else "Human")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{now:%Y-%m-%d_%H%M%S}.pgn"
     path.write_text(str(game) + "\n", encoding="utf-8")

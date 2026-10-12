@@ -15,9 +15,9 @@ from src.game.config import GraveyardConfig, RobotConfig
 from src.mapping.chessboard_mapping_3d import BoardObservation, ChessBoardMapping3D
 from src.mapping.geometry import square_centres
 
-PIECE_NAMES = {"p": "Bauer", "n": "Springer", "b": "Läufer", "r": "Turm", "q": "Dame", "k": "König"}
+PIECE_NAMES = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
 # Why a motion needs no camera world, for a cell that plans without one (Willy asks every motion for it).
-DECLINE = "Schach: Figurenlage aus ChessBoardMapping3D, ohne Kamerawelt"
+DECLINE = "chess: piece positions from ChessBoardMapping3D, no camera world"
 # Closing directions on the board: along the files, along the ranks and the two diagonals.
 _DIRECTIONS = [np.array(d, float) / np.linalg.norm(d) for d in ((1, 0), (0, 1), (1, 1), (1, -1))]
 
@@ -67,8 +67,8 @@ class Transfer:
 
     def describe(self) -> str:
         name = PIECE_NAMES[self.symbol.lower()]
-        start = chess.square_name(self.from_square) if self.from_square is not None else "Ablage"
-        end = chess.square_name(self.to_square) if self.to_square is not None else "Ablage"
+        start = chess.square_name(self.from_square) if self.from_square is not None else "graveyard"
+        end = chess.square_name(self.to_square) if self.to_square is not None else "graveyard"
         return f"{name} {start} -> {end}"
 
 
@@ -204,7 +204,7 @@ class RobotMover:
         grasp = self.config.grasp_height_fraction[tr.symbol.lower()] * height
         width = self.mapping.grasp_width(tr.symbol)
         if width > self.jaw.max_open - 0.002:
-            return False, False, [], f"{tr.describe()}: {width * 1000:.0f} mm breit, der Greifer öffnet nur {self.jaw.max_open * 1000:.0f} mm"
+            return False, False, [], f"{tr.describe()}: {width * 1000:.0f} mm wide, the gripper opens only {self.jaw.max_open * 1000:.0f} mm"
         open_mm = min(width * 1000 + 2 * self.config.finger_clearance_mm, self.jaw.max_open * 1000)
         others = [(xy, calib.piece_dims(observation.frame.classes[k])[1])
                   for k, xy in observation.grasp_positions.items() if np.linalg.norm(xy - tr.from_xy) > 0.5 * calib.square]
@@ -221,16 +221,16 @@ class RobotMover:
             if picked.ok:
                 break
             if not getattr(picked, "another_candidate_may_follow", False):
-                return False, False, reports, f"{tr.describe()}: Greifen abgelehnt ({picked.outcome})"
+                return False, False, reports, f"{tr.describe()}: grasp refused ({picked.outcome})"
         else:
-            return False, False, reports, f"{tr.describe()}: keine Greifrichtung ging"
+            return False, False, reports, f"{tr.describe()}: no grasp direction worked"
 
         z = tr.to_z + grasp + self.config.place_air_mm / 1000.0
         pose = self.robot.tool_down(*self.mapping.board_to_base_mm(tr.to_xy, z), closing_axis="x", yaw_deg=heading)
         placed = self.robot.place(pose, standoff_mm=self.config.standoff_mm, **self._decline())
         reports.append(placed)
         if not placed.ok:
-            return False, True, reports, f"{tr.describe()}: Abstellen nicht beendet ({placed.outcome}), Figur evtl. noch im Greifer"
+            return False, True, reports, f"{tr.describe()}: placing not finished ({placed.outcome}), the piece may still be in the gripper"
         return True, False, reports, ""
 
     def release(self) -> Any:

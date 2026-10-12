@@ -1,4 +1,4 @@
-"""Referenz Stufe 1-2: Ecken, Gitter, Homographie, 8x8-Fenster (wie im Dokument)."""
+"""Reference stages 1-2: corners, grid, homography, 8x8 window (as in the document)."""
 from __future__ import annotations
 
 import cv2 as cv
@@ -19,7 +19,7 @@ def _h(Hm, x):
 
 
 def corners(gray: np.ndarray) -> np.ndarray:
-    """Sattelpunkte (-det H) + Förstner-Subpixel; Fenster passt sich der Feldgröße im Bild an."""
+    """Saddle points (-det H) + Förstner subpixel; the window adapts to the square size in the image."""
     p = SaddlePointDetector(gray, 0, True).detect()
     if len(p) < 2:
         return p
@@ -31,7 +31,7 @@ def corners(gray: np.ndarray) -> np.ndarray:
 
 
 def _axes(gray, pts, L, B):
-    """Seite oder Diagonale: Mitte zweier Nachbarecken liegt auf einer Kante (Achse) oder im Feld."""
+    """Side or diagonal: the midpoint of two neighbouring corners lies on an edge (axis) or inside a square."""
     g = cv.GaussianBlur(gray.astype(np.float32), (0, 0), 1.0)
     gx, gy = cv.Sobel(g, cv.CV_32F, 1, 0), cv.Sobel(g, cv.CV_32F, 0, 1)
     h, w = g.shape
@@ -78,7 +78,7 @@ def _edge_energy(grad, Hm, cx, cy):
 
 
 def _window(gray, Hm, idx, ok, band=3):
-    """7x7-Fenster: meiste Inlier, bei Gleichstand (bis band darunter) Kantenenergie der 18 Linien."""
+    """7x7 window: most inliers, on a tie (up to band below) edge energy of the 18 lines."""
     g = cv.GaussianBlur(gray.astype(np.float32), (0, 0), 1.0)
     grad = cv.magnitude(cv.Sobel(g, cv.CV_32F, 1, 0), cv.Sobel(g, cv.CV_32F, 0, 1))
     I = idx[ok].astype(int)
@@ -91,7 +91,7 @@ def _window(gray, Hm, idx, ok, band=3):
 
 
 def detect_grid(img, thr_px=2.0):
-    """Gitter -> Bild-Homographie (innere Ecken bei -3..3) plus Inlier-Ecken und ihre Indizes."""
+    """Grid -> image homography (inner corners at -3..3) plus inlier corners and their indices."""
     gray = _gray(img)
     pts = corners(gray)
     if len(pts) < 8:

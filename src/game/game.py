@@ -22,10 +22,10 @@ from src.pieces.record import Recorder
 PROMOTION_KEYS = {"q": chess.QUEEN, "r": chess.ROOK, "b": chess.BISHOP, "n": chess.KNIGHT}
 INTRUDER_PX = 300           # a hand or an arm over the board covers thousands of pixels, noise none
 DRAW_ACCEPT_CP = 50         # Willy accepts a draw unless it stands better than half a pawn
-OUTCOMES = {chess.Termination.CHECKMATE: "Schachmatt", chess.Termination.STALEMATE: "Patt",
-            chess.Termination.INSUFFICIENT_MATERIAL: "zu wenig Material",
-            chess.Termination.SEVENTYFIVE_MOVES: "75-Züge-Regel",
-            chess.Termination.FIVEFOLD_REPETITION: "fünffache Wiederholung"}
+OUTCOMES = {chess.Termination.CHECKMATE: "checkmate", chess.Termination.STALEMATE: "stalemate",
+            chess.Termination.INSUFFICIENT_MATERIAL: "insufficient material",
+            chess.Termination.SEVENTYFIVE_MOVES: "75-move rule",
+            chess.Termination.FIVEFOLD_REPETITION: "fivefold repetition"}
 
 
 @dataclass
@@ -48,8 +48,8 @@ class View(Protocol):
     def wait(self, state: ViewState, accept: set[str]) -> str:
         """
         Block until the human gives one of the accepted answers: "done" (space bar), "recalibrate" (R),
-        "quit" (Esc), "resign" (A), "draw" (U), a promotion piece "q", "r", "b", "n", a colour "white" (W)
-        or "black" (S), or, if "move" is accepted, "move:<uci>" (two squares clicked).
+        "quit" (Esc), "resign" (G), "draw" (D), a promotion piece "q", "r", "b", "n", a colour "white" (W)
+        or "black" (B), or, if "move" is accepted, "move:<uci>" (two squares clicked).
         """
         ...
 
@@ -90,8 +90,8 @@ def describe_wrong_move(board: chess.Board, physical: dict[int, str], seen: dict
 
     willy_left, willy_arrived = changes(not human)
     if willy_arrived:
-        return (f"Eine Figur von Willy steht jetzt auf {chess.square_name(willy_arrived[0])}. "
-                f"Bitte zurückstellen, dann Leertaste.")
+        return (f"A piece of Willy's now stands on {chess.square_name(willy_arrived[0])}. "
+                f"Please put it back, then press space.")
     left, arrived = changes(human)
     if len(left) != 1 or len(arrived) != 1:
         return None
@@ -101,14 +101,14 @@ def describe_wrong_move(board: chess.Board, physical: dict[int, str], seen: dict
     if move in board.legal_moves:
         return None
     if not board.is_pseudo_legal(move):
-        reason = "so darf die Figur nicht ziehen"
+        reason = "this piece cannot move like that"
     elif board.is_into_check(move):
-        reason = "dein König stünde im Schach"
+        reason = "your king would be in check"
     else:
-        reason = "das erlauben die Regeln hier nicht"
-    name = PIECE_NAMES[piece.symbol().lower()]
-    return (f"{name} {chess.square_name(left[0])}-{chess.square_name(arrived[0])} ist nicht erlaubt: {reason}. "
-            f"Bitte zurückziehen, dann Leertaste.")
+        reason = "the rules do not allow it here"
+    name = PIECE_NAMES[piece.symbol().lower()].capitalize()
+    return (f"{name} {chess.square_name(left[0])}-{chess.square_name(arrived[0])} is not allowed: {reason}. "
+            f"Please take it back, then press space.")
 
 
 class ChessGame:
@@ -152,22 +152,22 @@ class ChessGame:
             outcome = self.tracker.board.outcome()
             result, reason = outcome.result(), OUTCOMES.get(outcome.termination, "")
         except GameAborted:
-            self._status("Partie abgebrochen.")
+            self._status("Game aborted.")
             return "*"
         except GameOver as over:
             result, reason = over.result, over.reason
-        self._status(f"Partie vorbei: {result} ({reason}).")
+        self._status(f"Game over: {result} ({reason}).")
         return result
 
     def ask_new_game(self) -> bool:
         """After a game: another one? The human sets up the starting position and clears the graveyard."""
-        return self._ask(f"{self.state.status} Neue Partie: Grundstellung aufbauen, Ablage leeren, Leertaste. "
-                         f"Esc: Ende.", {"done", "quit"}) == "done"
+        return self._ask(f"{self.state.status} New game: set up the starting position, clear the graveyard, "
+                         f"press space. Esc: end.", {"done", "quit"}) == "done"
 
     def choose_color(self) -> None:
         """The human picks a side; the space bar keeps the one preselected in the config."""
-        preset = "Weiß" if self.human == chess.WHITE else "Schwarz"
-        answer = self._ask(f"Welche Farbe spielst du? W = Weiß, S = Schwarz, Leertaste = {preset}.",
+        preset = "White" if self.human == chess.WHITE else "Black"
+        answer = self._ask(f"Which colour do you play? W = White, B = Black, space = {preset}.",
                            {"white", "black", "done", "quit"})
         if answer == "quit":
             raise GameAborted
@@ -179,15 +179,15 @@ class ChessGame:
         """Calibrate until it succeeds; in a running game against the position the tracker knows."""
         expected = self.tracker.physical if self.tracker is not None else None
         while True:
-            self._status("Willy misst das Brett ein ...")
+            self._status("Willy is calibrating the board ...")
             # a refusal is fail-closed and every grab has new noise, so try a few frames before asking
             for _ in range(3):
-                result = self._safely("Einmessen", lambda: (self.go_look(), self.mapping.calibrate(expected))[1])
+                result = self._safely("Calibration", lambda: (self.go_look(), self.mapping.calibrate(expected))[1])
                 if result.calibration is not None:
                     break
             if result.calibration is not None:
                 break
-            answer = self._ask(f"Einmessen abgelehnt: {result.reason}. Brett prüfen, dann Leertaste.",
+            answer = self._ask(f"Calibration refused: {result.reason}. Check the board, then press space.",
                                {"done", "quit"})
             if answer == "quit":
                 raise GameAborted
@@ -204,17 +204,17 @@ class ChessGame:
     # ------------------------------------------------------------------ turns
     def human_turn(self) -> None:
         """Wait for the human's move and recognise it; ask whenever it cannot be confirmed."""
-        prompt = "Dein Zug. Leertaste, wenn du fertig bist (Zug anklicken geht auch)."
+        prompt = "Your move. Press space when you are done (or click the move)."
         while True:
             answer = self._ask(prompt, {"done", "recalibrate", "quit", "move", "resign", "draw"})
             if answer == "quit":
                 raise GameAborted
             if answer == "resign":
-                raise GameOver("0-1" if self.human == chess.WHITE else "1-0", "du hast aufgegeben")
+                raise GameOver("0-1" if self.human == chess.WHITE else "1-0", "you resigned")
             if answer == "draw":
                 if self.engine.score(self.tracker.board, not self.human) <= DRAW_ACCEPT_CP:
-                    raise GameOver("1/2-1/2", "Remis vereinbart")
-                prompt = "Willy lehnt das Remis ab. Dein Zug."
+                    raise GameOver("1/2-1/2", "draw agreed")
+                prompt = "Willy declines the draw. Your move."
                 continue
             if answer == "recalibrate":
                 self.calibrate()
@@ -222,12 +222,12 @@ class ChessGame:
             if answer.startswith("move:"):
                 if self._commit_typed(answer[5:]):
                     return
-                prompt = f"{answer[5:]} ist hier kein legaler Zug. Nochmal."
+                prompt = f"{answer[5:]} is not a legal move here. Try again."
                 continue
 
             observation = self._clear_view(self._observe())
             if observation is None:
-                prompt = "Das Brett wurde verschoben. R zum Neu-Einmessen."
+                prompt = "The board was moved. Press R to calibrate again."
                 continue
             before = dict(self.tracker.physical)
             result = self.tracker.step(observation.frame, observation.calib)
@@ -235,11 +235,11 @@ class ChessGame:
             if result.flagged:
                 self.state.uncertain = self._disagreeing_squares(observation)
                 prompt = describe_wrong_move(self.tracker.board, self.tracker.physical, observation.occupancy(),
-                                             self.human) or (f"Zug nicht sicher erkannt (NLL {result.nll:.1f}). "
-                                                             f"Brett prüfen und Leertaste, oder den Zug anklicken.")
+                                             self.human) or (f"Move not recognised for sure (NLL {result.nll:.1f}). "
+                                                             f"Check the board and press space, or click the move.")
                 continue
             if result.move is None:
-                prompt = "Ich sehe keinen Zug. Leertaste, wenn du gezogen hast."
+                prompt = "I see no move. Press space when you have moved."
                 continue
             if result.promotion_ambiguous:
                 self._ask_promotion(result.move)
@@ -251,13 +251,13 @@ class ChessGame:
     def willy_turn(self) -> None:
         """Stockfish moves, the robot executes, the camera confirms."""
         board = self.tracker.board
-        self._status("Willy denkt ...")
+        self._status("Willy is thinking ...")
         move = self.engine.best_move(board)
         san = board.san(move)
 
         observation = self._clear_view(self._observe())       # nothing but pieces over the board before the arm moves
         while observation is None:
-            if self._ask("Das Brett wurde verschoben. R zum Neu-Einmessen.", {"recalibrate", "quit"}) == "quit":
+            if self._ask("The board was moved. Press R to calibrate again.", {"recalibrate", "quit"}) == "quit":
                 raise GameAborted
             self.calibrate()
             observation = self._clear_view(self._observe())
@@ -265,24 +265,24 @@ class ChessGame:
         self._remember_positions(observation, changed=set(), record=False)
         transfers = plan_transfers(board, self.tracker.physical, move, self.piece_xy, observation.calib.square,
                                    self.graveyard_used, self.config.robot.graveyard)
-        self._status(f"Willy zieht {san}: " + ", ".join(t.describe() for t in transfers))
+        self._status(f"Willy plays {san}: " + ", ".join(t.describe() for t in transfers))
         try:
             execution = self.mover.execute(transfers, observation)
         except Exception as err:  # noqa: BLE001 (never repeated: a piece may have moved already)
-            execution = MoveExecution(ok=False, holding=True, message=f"Willys Zug abgebrochen ({err})")
+            execution = MoveExecution(ok=False, holding=True, message=f"Willy's move aborted ({err})")
         self.graveyard_used += sum(1 for t in execution.done if t.to_square is None)
 
         if not execution.ok:
             if execution.holding:
                 # never open the hand by itself: the piece would fall onto the board
-                self._ask(f"{execution.message}. Hält Willy noch eine Figur, bitte unter den Greifer fassen; "
-                          f"Leertaste öffnet ihn.", {"done"})
-                self._safely("Greifer öffnen", self.mover.release)
-            self._ask(f"{execution.message}. Bitte {san} von Hand fertig ziehen, dann Leertaste.", {"done"})
+                self._ask(f"{execution.message}. If Willy still holds a piece, please put a hand under the gripper; "
+                          f"space opens it.", {"done"})
+                self._safely("Opening the gripper", self.mover.release)
+            self._ask(f"{execution.message}. Please finish {san} by hand, then press space.", {"done"})
         elif move.promotion and self.config.game.promotion_mode == "piece_swapped":
             name = PIECE_NAMES[chess.piece_symbol(move.promotion)]
-            self._ask(f"Bitte den Bauern auf {chess.square_name(move.to_square)} durch die neue Figur ({name}) "
-                      f"ersetzen, dann Leertaste.", {"done"})
+            self._ask(f"Please replace the pawn on {chess.square_name(move.to_square)} with the new piece ({name}), "
+                      f"then press space.", {"done"})
         self._confirm_own_move(move, san)
 
     def _confirm_own_move(self, move: chess.Move, san: str) -> None:
@@ -299,10 +299,10 @@ class ChessGame:
                     self.state.uncertain = set()
                     self._sync()
                     return
-                prompt = (f"Nach {san} sieht das Brett anders aus als erwartet (NLL {nll:.1f}). "
-                          f"Bitte korrigieren, dann Leertaste.")
+                prompt = (f"After {san} the board looks different than expected (NLL {nll:.1f}). "
+                          f"Please fix it, then press space.")
             else:
-                prompt = "Das Brett wurde verschoben. R zum Neu-Einmessen."
+                prompt = "The board was moved. Press R to calibrate again."
             answer = self._ask(prompt, {"done", "recalibrate", "quit"})
             if answer == "quit":
                 raise GameAborted
@@ -312,7 +312,7 @@ class ChessGame:
     # ------------------------------------------------------------------ helpers
     def _observe(self) -> BoardObservation | None:
         """Look at the board; None if it moved since the calibration."""
-        observation = self._safely("Hinschauen", lambda: (self.go_look(), self.mapping.observe())[1])
+        observation = self._safely("Looking at the board", lambda: (self.go_look(), self.mapping.observe())[1])
         self.state.observation = observation
         return None if observation.board_moved else observation
 
@@ -324,8 +324,8 @@ class ChessGame:
         for attempt in range(3):
             if observation is None or attempt == 2 or observation.intruders() <= INTRUDER_PX:
                 return observation
-            extra = "" if attempt == 0 else " Ist da nichts: Leertaste geht trotzdem weiter."
-            if self._ask(f"Über dem Brett ist noch etwas, eine Hand? Bitte wegnehmen, dann Leertaste.{extra}",
+            extra = "" if attempt == 0 else " If there is nothing: space goes on anyway."
+            if self._ask(f"Something is over the board, a hand? Please take it away, then press space.{extra}",
                          {"done", "quit"}) == "quit":
                 raise GameAborted
             observation = self._observe()
@@ -339,7 +339,7 @@ class ChessGame:
             except (GameAborted, GameOver):
                 raise
             except Exception as err:  # noqa: BLE001 (the person at the board decides, the game goes on)
-                if self._ask(f"{what} ging nicht: {err}. Leertaste: nochmal, Esc: Ende.", {"done", "quit"}) == "quit":
+                if self._ask(f"{what} failed: {err}. Space: try again, Esc: end.", {"done", "quit"}) == "quit":
                     raise GameAborted from err
 
     def _remember_positions(self, observation: BoardObservation, changed: set[int], record: bool = True) -> None:
@@ -363,7 +363,7 @@ class ChessGame:
         return {sq for sq in set(before) | set(after) if before.get(sq) != after.get(sq)}
 
     def _ask_promotion(self, move: chess.Move) -> None:
-        answer = self._ask("Umwandlung in? D = Dame, T = Turm, L = Läufer, S = Springer.", set(PROMOTION_KEYS))
+        answer = self._ask("Promote to? Q = queen, R = rook, B = bishop, N = knight.", set(PROMOTION_KEYS))
         if PROMOTION_KEYS[answer] != move.promotion:
             self.tracker.undo()
             self.tracker.commit(chess.Move(move.from_square, move.to_square, promotion=PROMOTION_KEYS[answer]))

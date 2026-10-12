@@ -1,5 +1,6 @@
-# The same as requirements.txt with Willy's CPU wheels of torch, for machines without CUDA (macOS, a laptop).
+# The same as requirements.txt with Willy's CPU wheels of torch.
 -r external/Workaholic-Willy/requirements-cpu.txt
 
+# Willy_Chess on top of it
 chess==1.11.2
 pygame==2.6.1

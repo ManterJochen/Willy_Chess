@@ -1,13 +1,13 @@
-"""Szenen-Generator mit exakter Wahrheit: Brettbild, Figurenmasken, Tiefenbild, Partien.
+"""Scene generator with exact ground truth: board image, piece masks, depth image, games.
 
-Konventionen (gelten für alle Adapter):
-- Bild 640 x 480, Kamera-Matrix K mit f = 600 px, keine Verzeichnung.
-- Brettrahmen: Ursprung in der Brettmitte, x zur h-Linie, y zur 8. Reihe, z nach oben, Meter.
-- Pose: X_cam = R @ X_brett + t.
-- Felder in python-chess-Nummerierung (a1 = 0, h8 = 63), Feldmitte ((f - 3.5) * s, (r - 3.5) * s).
-- Tiefe: Meter entlang der optischen Achse (z-Tiefe), 0 = ungültig.
+Conventions (apply to all adapters):
+- Image 640 x 480, camera matrix K with f = 600 px, no distortion.
+- Board frame: origin at the board centre, x towards the h-file, y towards the 8th rank, z up, metres.
+- Pose: X_cam = R @ X_board + t.
+- Squares in python-chess numbering (a1 = 0, h8 = 63), square centre ((f - 3.5) * s, (r - 3.5) * s).
+- Depth: metres along the optical axis (z-depth), 0 = invalid.
 
-Die Figuren sind taillierte Rotationskörper (die "Wahrheit"); Schätzer kennen dieses Profil nicht.
+The pieces are waisted solids of revolution (the "truth"); estimators do not know this profile.
 """
 from __future__ import annotations
 
@@ -20,13 +20,13 @@ import numpy as np
 W, H = 640, 480
 F = 600.0
 K = np.array([[F, 0, W / 2], [0, F, H / 2], [0, 0, 1.0]])
-SS = 4                       # Überabtastung beim Rendern
-PX = 80                      # Texturpixel pro Feld
-FRAME = 1.0                  # Rahmenbreite in Feldern
-SQ_DEFAULT = 0.057           # Turnierfeld in Metern
-MIN_VISIBLE_PX = 25          # weniger sichtbare Pixel = Figur gilt als nicht erkannt
+SS = 4                       # supersampling when rendering
+PX = 80                      # texture pixels per square
+FRAME = 1.0                  # frame width in squares
+SQ_DEFAULT = 0.057           # tournament square in metres
+MIN_VISIBLE_PX = 25          # fewer visible pixels = piece counts as not detected
 
-# (Höhe, Fußradius) in Metern bei 57-mm-Feldern, etwa Staunton
+# (height, foot radius) in metres for 57 mm squares, roughly Staunton
 DIMS = {chess.PAWN: (0.050, 0.0145), chess.KNIGHT: (0.060, 0.016), chess.BISHOP: (0.070, 0.016),
         chess.ROOK: (0.055, 0.016), chess.QUEEN: (0.085, 0.018), chess.KING: (0.095, 0.020)}
 PROFILE = [(0, 1.0), (0.12, 1.0), (0.18, 0.75), (0.55, 0.45), (0.8, 0.6), (0.9, 0.5), (1.0, 0.3)]
@@ -37,37 +37,37 @@ _ANG = np.linspace(0, 2 * np.pi, 28, endpoint=False)
 
 @dataclass
 class Frame:
-    """Was ein Adapter pro Bild bekommt."""
+    """What an adapter gets per image."""
     bgr: np.ndarray                                   # (H, W, 3) uint8
     K: np.ndarray                                     # (3, 3)
-    depth: np.ndarray | None = None                   # (H, W) float32, z-Tiefe in Metern, 0 = ungültig
-    labels: np.ndarray | None = None                  # (H, W) int32, 0 = keine Figur, k = Figur k
-    classes: dict[int, str] = field(default_factory=dict)   # k -> FEN-Symbol, z. B. 'P' oder 'n'
+    depth: np.ndarray | None = None                   # (H, W) float32, z-depth in metres, 0 = invalid
+    labels: np.ndarray | None = None                  # (H, W) int32, 0 = no piece, k = piece k
+    classes: dict[int, str] = field(default_factory=dict)   # k -> FEN symbol, e.g. 'P' or 'n'
 
 
 @dataclass
 class Calibration:
-    """Ergebnis des Einmessens: Pose, Feldgröße, optional Figurenmaße."""
-    R: np.ndarray                                     # (3, 3), X_cam = R @ X_brett + t
-    t: np.ndarray                                     # (3,), Meter
-    square: float                                     # Feldgröße in Metern
-    dims: dict[str, tuple[float, float]] | None = None   # 'p','n','b','r','q','k' -> (Höhe, Fußradius)
+    """Result of the calibration: pose, square size, optionally piece dimensions."""
+    R: np.ndarray                                     # (3, 3), X_cam = R @ X_board + t
+    t: np.ndarray                                     # (3,), metres
+    square: float                                     # square size in metres
+    dims: dict[str, tuple[float, float]] | None = None   # 'p','n','b','r','q','k' -> (height, foot radius)
 
 
 @dataclass
 class Setup:
-    """Kamera, Brett und Sensor einer Szene oder einer ganzen Partie."""
+    """Camera, board and sensor of a scene or of a whole game."""
     R: np.ndarray
     t: np.ndarray
     C: np.ndarray
     square: float = SQ_DEFAULT
-    scale: float = 1.0                    # Figurensatz relativ zu DIMS * square / 0.057
-    depth_sigma: float = 0.005            # Tiefenrauschen bei 0,75 m, wächst mit z^2
-    fly: float = 0.5                      # Anteil Flying Pixels am Maskenrand
-    tof_bias: float = 0.003               # Mehrtiefe auf dunklen Feldern (ToF-Reflexion)
-    warp: float = 0.0                     # Brettmitte gewölbt (+) oder durchgehängt (-), Meter
-    mask_px: int = 0                      # Masken dem Adapter um n px geweitet (+) / erodiert (-)
-    depth_shift: int = 0                  # Tiefenbild gegen Farbbild verschoben, px
+    scale: float = 1.0                    # piece set relative to DIMS * square / 0.057
+    depth_sigma: float = 0.005            # depth noise at 0.75 m, grows with z^2
+    fly: float = 0.5                      # share of flying pixels at the mask edge
+    tof_bias: float = 0.003               # extra depth on dark squares (ToF reflection)
+    warp: float = 0.0                     # board centre bulged (+) or sagged (-), metres
+    mask_px: int = 0                      # masks given to the adapter dilated (+) / eroded (-) by n px
+    depth_shift: int = 0                  # depth image shifted against the colour image, px
 
     def dims(self, piece_type: int) -> tuple[float, float]:
         h, r = DIMS[piece_type]
@@ -75,14 +75,14 @@ class Setup:
         return h * k, r * k
 
     def calibration(self) -> Calibration:
-        """Wahre Pose und Feldgröße, Figurenmaße nominal (ohne den zufälligen Satz-Faktor)."""
+        """True pose and square size, piece dimensions nominal (without the random set factor)."""
         k = self.square / SQ_DEFAULT
         dims = {chess.piece_symbol(pt): (h * k, r * k) for pt, (h, r) in DIMS.items()}
         return Calibration(self.R.copy(), self.t.copy(), self.square, dims)
 
 
 def look_at(tilt_deg: float, azim_deg: float, dist: float = 0.75) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Kamera auf einer Kugel um die Brettmitte; tilt = Winkel gegen die Senkrechte."""
+    """Camera on a sphere around the board centre; tilt = angle from the vertical."""
     t, a = np.deg2rad(tilt_deg), np.deg2rad(azim_deg)
     C = dist * np.array([np.sin(t) * np.cos(a), np.sin(t) * np.sin(a), np.cos(t)])
     fwd = -C / np.linalg.norm(C)
@@ -99,7 +99,7 @@ def project(R, t, X):
 
 
 def homography_sq2img(R, t, square):
-    """Brettebene in Feldeinheiten -> Bild."""
+    """Board plane in square units -> image."""
     Hm = K @ np.column_stack((R[:, 0], R[:, 1], t)) @ np.diag([square, square, 1.0])
     return Hm / Hm[2, 2]
 
@@ -108,20 +108,20 @@ def sq_center(s: int, square: float) -> np.ndarray:
     return np.array([(chess.square_file(s) - 3.5) * square, (chess.square_rank(s) - 3.5) * square])
 
 
-# --------------------------------------------------------------------------- Brettbild
+# --------------------------------------------------------------------------- Board image
 def _texture(rng):
     n = int((8 + 2 * FRAME) * PX)
     tex = np.full((n, n), 120, np.float32)
     off = int(FRAME * PX)
     for r in range(8):
-        for c in range(8):                                   # Zeile = Reihe, Spalte = Linie, a1 dunkel
+        for c in range(8):                                   # row = rank, column = file, a1 dark
             tex[off + r * PX: off + (r + 1) * PX, off + c * PX: off + (c + 1) * PX] = 60 if (r + c) % 2 == 0 else 200
     return tex + rng.normal(0, 3, tex.shape).astype(np.float32)
 
 
 def render_board(rng, H_sq2img, blur=0.9, noise=2.0, clutter=0, blobs=0, paint=None) -> np.ndarray:
-    """Brett mit Rahmen auf ruhigem Hintergrund. clutter = Schachbrett-Flicken neben dem Brett,
-    blobs = flache Scheiben auf zufälligen Feldern (verdecken Ecken), paint = (labels, Grauwerte) für Figuren."""
+    """Board with frame on a calm background. clutter = chessboard patches beside the board,
+    blobs = flat discs on random squares (hide corners), paint = (labels, grey values) for pieces."""
     h, w = H, W
     tex = _texture(rng)
     o = 0.5 / PX - (4 + FRAME)
@@ -165,14 +165,14 @@ def render_board(rng, H_sq2img, blur=0.9, noise=2.0, clutter=0, blobs=0, paint=N
 
 
 def inner_corners(H_sq2img) -> np.ndarray:
-    """Wahre Bildposition der 49 inneren Ecken, Reihenfolge (i, j) mit i, j in -3..3."""
+    """True image position of the 49 inner corners, order (i, j) with i, j in -3..3."""
     ij = np.array([(i, j) for j in range(-3, 4) for i in range(-3, 4)], np.float64)
     p = (H_sq2img @ np.column_stack((ij, np.ones(len(ij)))).T).T
     return p[:, :2] / p[:, 2:]
 
 
 def camera_squares(tilt, yaw, dist_sq, shift=(0.0, 0.0)) -> np.ndarray:
-    """Kamera für reine Brettbilder, Brettebene in Feldeinheiten (wie in den ersten Messungen)."""
+    """Camera for plain board images, board plane in square units (as in the first measurements)."""
     t, y = np.deg2rad(tilt), np.deg2rad(yaw)
     Rz = np.array([[np.cos(y), -np.sin(y), 0], [np.sin(y), np.cos(y), 0], [0, 0, 1]])
     Rx = np.array([[1, 0, 0], [0, np.cos(t), -np.sin(t)], [0, np.sin(t), np.cos(t)]])
@@ -181,7 +181,7 @@ def camera_squares(tilt, yaw, dist_sq, shift=(0.0, 0.0)) -> np.ndarray:
     return Hm / Hm[2, 2]
 
 
-# --------------------------------------------------------------------------- Figuren
+# --------------------------------------------------------------------------- Pieces
 def _bulge(setup: Setup, xy) -> np.ndarray:
     if setup.warp == 0.0:
         return np.zeros(np.shape(xy)[:-1]) if np.ndim(xy) > 1 else 0.0
@@ -202,7 +202,7 @@ def _silhouette(setup: Setup, xy, h, r):
 
 def jitter_offsets(rng, board: chess.Board, prev: dict | None = None, prev_board: chess.Board | None = None,
                    jitter=0.18) -> dict[int, np.ndarray]:
-    """Versatz jeder Figur gegen die Feldmitte, in Feldern. Unbewegte Figuren behalten ihren Versatz."""
+    """Offset of each piece from the square centre, in squares. Unmoved pieces keep their offset."""
     out = {}
     for s, p in board.piece_map().items():
         if prev is not None and prev_board is not None and prev_board.piece_at(s) == p and s in prev:
@@ -215,13 +215,13 @@ def jitter_offsets(rng, board: chess.Board, prev: dict | None = None, prev_board
 
 @dataclass
 class Truth:
-    square_of: dict[int, int]             # Label -> wahres Feld (nur erkannte Figuren)
-    n_pieces: int                         # Figuren auf dem Brett, auch verdeckte
+    square_of: dict[int, int]             # label -> true square (detected pieces only)
+    n_pieces: int                         # pieces on the board, hidden ones too
     calibration: Calibration
 
 
 def render_pieces(rng, setup: Setup, board: chess.Board, offsets: dict[int, np.ndarray]) -> tuple[Frame, Truth]:
-    """Brettbild mit Figuren, Labels, Klassen und Tiefenbild; Verdeckung nach Malerprinzip."""
+    """Board image with pieces, labels, classes and depth image; occlusion by the painter's algorithm."""
     pieces = []
     for s, p in board.piece_map().items():
         xy = sq_center(s, setup.square) + offsets[s] * setup.square
@@ -255,13 +255,13 @@ def render_pieces(rng, setup: Setup, board: chess.Board, offsets: dict[int, np.n
 
 
 def _render_depth(rng, setup: Setup, lab, pieces) -> np.ndarray:
-    """z-Tiefe: Brettoberfläche überall, Strahlschnitt mit dem wahren Körper auf Figurenpixeln."""
+    """z-depth: board surface everywhere, ray intersection with the true solid on piece pixels."""
     vs, us = np.mgrid[0:H, 0:W]
     pix = np.column_stack((us.ravel(), vs.ravel(), np.ones(H * W)))
-    D = (setup.R.T @ (np.linalg.inv(K) @ pix.T)).T                 # Richtung, Parameter = z-Tiefe
+    D = (setup.R.T @ (np.linalg.inv(K) @ pix.T)).T                 # direction, parameter = z-depth
     C = setup.C
     z = -C[2] / D[:, 2]
-    for _ in range(3):                                             # Schnitt mit gewölbter Oberfläche
+    for _ in range(3):                                             # intersection with the bulged surface
         X = C + z[:, None] * D
         z = (_bulge(setup, X[:, :2]) - C[2]) / D[:, 2]
     z_board = z.copy()

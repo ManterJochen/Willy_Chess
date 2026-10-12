@@ -1,5 +1,5 @@
-# Eingefrorene Kopie von src/board/saddle.py aus ManterJochen/Willy_Chess, Commit f3d51b2 (9. Okt. 2026).
-# Nicht ändern: Referenz und Original-Adapter hängen davon ab, sonst driftet die Baseline.
+# Frozen copy of src/board/saddle.py from ManterJochen/Willy_Chess, commit f3d51b2 (9 Oct 2026).
+# Do not change: the reference and the original adapter depend on it, or the baseline drifts.
 import cv2 as cv
 import numpy as np
 

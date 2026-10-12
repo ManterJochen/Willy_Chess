@@ -251,7 +251,7 @@ class GameSimTest(unittest.TestCase):
             told: list[str] = []
 
             def wait(self, state, accept):
-                if "nicht erlaubt" in state.status:
+                if "not allowed" in state.status:
                     self.told.append(state.status)
                     self.rig.set_physical(self.before)
                 elif "move" in accept and not hasattr(self, "before"):
@@ -263,12 +263,12 @@ class GameSimTest(unittest.TestCase):
                 return super().wait(state, accept)
 
         rig, game, _, human = self.play(2, plies=4, human_cls=CheatingHuman)
-        self.assertTrue(any("Springer g1-g3 ist nicht erlaubt" in t for t in human.told), human.told)
+        self.assertTrue(any("Knight g1-g3 is not allowed" in t for t in human.told), human.told)
         self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
 
 
     def test_resign_and_draw_end_the_game(self):
-        for answer, ending in (("resign", "0-1 (du hast aufgegeben)"), ("draw", "1/2-1/2 (Remis vereinbart)")):
+        for answer, ending in (("resign", "0-1 (you resigned)"), ("draw", "1/2-1/2 (draw agreed)")):
             class Ending(ScriptedHuman):
                 def wait(self, state, accept):
                     return answer if answer in accept else super().wait(state, accept)
@@ -282,7 +282,7 @@ class GameSimTest(unittest.TestCase):
             asked = 0
 
             def wait(self, state, accept):
-                if "eine Hand?" in state.status:
+                if "a hand?" in state.status:
                     Reaching.asked += 1
                     self.rig.hand = None
                     return "done"
@@ -302,12 +302,12 @@ class GameSimTest(unittest.TestCase):
             def once_broken():
                 calls.append(1)
                 if len(calls) == 3:
-                    raise RuntimeError("Kamera weg")
+                    raise RuntimeError("camera gone")
                 return observe()
             mapping.observe = once_broken
 
         rig, game, _, human = self.play(5, plies=4, setup=flaky)
-        self.assertTrue(any("Hinschauen ging nicht: Kamera weg" in st for st in human.statuses))
+        self.assertTrue(any("Looking at the board failed: camera gone" in st for st in human.statuses))
         self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
 
     def test_a_finished_game_is_saved_as_pgn(self):
@@ -320,7 +320,7 @@ class GameSimTest(unittest.TestCase):
             board.push_san(san)
         with tempfile.TemporaryDirectory() as folder:
             text = save_pgn(board, "0-1", chess.WHITE, Path(folder)).read_text()
-        self.assertIn('[White "Mensch"]', text)
+        self.assertIn('[White "Human"]', text)
         self.assertIn("2. g4 Qh4# 0-1", text)
 
 
@@ -338,14 +338,14 @@ class WrongMoveTest(unittest.TestCase):
         return describe_wrong_move(board, physical, seen, human)
 
     def test_a_piece_moved_against_its_rules(self):
-        self.assertIn("so darf die Figur nicht ziehen", self.explain(chess.STARTING_FEN, "g1g3"))
+        self.assertIn("this piece cannot move like that", self.explain(chess.STARTING_FEN, "g1g3"))
 
     def test_a_move_into_check(self):
         msg = self.explain("4r1k1/8/8/8/8/8/4B3/4K3 w - - 0 1", "e2d3")       # the bishop is pinned
-        self.assertIn("König stünde im Schach", msg)
+        self.assertIn("king would be in check", msg)
 
     def test_a_piece_of_willys_moved(self):
-        self.assertIn("Figur von Willy", self.explain(chess.STARTING_FEN, "e7e5"))
+        self.assertIn("piece of Willy's", self.explain(chess.STARTING_FEN, "e7e5"))
 
     def test_a_legal_move_is_no_wrong_move(self):
         self.assertIsNone(self.explain(chess.STARTING_FEN, "e2e4"))

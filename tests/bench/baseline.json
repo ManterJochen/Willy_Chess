@@ -1,5 +1,5 @@
 {
- "note": "Erzeugt mit python -m bench.run --write-baseline; Szenen-Fingerabdrücke gelten für die Versionen unter meta.",
+ "note": "Generated with python -m bench.run --write-baseline; scene fingerprints apply to the versions under meta.",
  "meta": {
   "reference": {
    "python": "3.13.16",
@@ -23,25 +23,25 @@
  "adapters": {
   "reference": {
    "full": {
-    "ecken": {
+    "corners": {
      "fingerprint": "9285ae24ec470d3d",
      "quick": false,
      "seconds": 2.9,
      "rows": {
       "0-45°": {
        "counts": {
-        "Ecken gefunden": [
+        "corners found": [
          1958,
          1960
         ]
        },
        "values": {
         "RMSE px": 0.04161616034825236,
-        "95%-Quantil px": 0.07240255856514616
+        "95% quantile px": 0.07240255856514616
        },
        "max": {
         "RMSE px": 0.04161616034825236,
-        "95%-Quantil px": 0.07240255856514616
+        "95% quantile px": 0.07240255856514616
        },
        "failures": [
         9,
@@ -50,18 +50,18 @@
       }
      }
     },
-    "brett": {
+    "board": {
      "fingerprint": "f62421036fb7b78f",
      "quick": false,
      "seconds": 16.6,
      "rows": {
-      "Figuren 30-45°": {
+      "pieces 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          30,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -70,13 +70,13 @@
        "max": {},
        "failures": []
       },
-      "Figuren 45-60°": {
+      "pieces 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          30,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -85,13 +85,13 @@
        "max": {},
        "failures": []
       },
-      "Störmuster 30-45°": {
+      "clutter 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          30,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -100,13 +100,13 @@
        "max": {},
        "failures": []
       },
-      "Störmuster 45-60°": {
+      "clutter 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          30,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -117,31 +117,31 @@
       }
      }
     },
-    "einmessen": {
+    "calibration": {
      "fingerprint": "235b23ac509b170b",
      "quick": false,
      "seconds": 64.8,
      "rows": {
       "35°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          30,
          30
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          30
         ],
-        "Brett komplett": [
+        "board complete": [
          29,
          30
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.21671274501855317
+        "square size error %": 0.21671274501855317
        },
        "max": {
-        "Feldgröße-Fehler %": 0.3377054422756709
+        "square size error %": 0.3377054422756709
        },
        "failures": [
         19
@@ -149,47 +149,47 @@
       },
       "50°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          30,
          30
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          30
         ],
-        "Brett komplett": [
+        "board complete": [
          30,
          30
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.25756764993580405
+        "square size error %": 0.25756764993580405
        },
        "max": {
-        "Feldgröße-Fehler %": 0.8265045044663522
+        "square size error %": 0.8265045044663522
        },
        "failures": []
       },
       "60°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          29,
          30
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          30
         ],
-        "Brett komplett": [
+        "board complete": [
          29,
          30
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.2766119243742696
+        "square size error %": 0.2766119243742696
        },
        "max": {
-        "Feldgröße-Fehler %": 0.7777517136021928
+        "square size error %": 0.7777517136021928
        },
        "failures": [
         17
@@ -197,24 +197,24 @@
       },
       "70°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          27,
          30
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          30
         ],
-        "Brett komplett": [
+        "board complete": [
          23,
          30
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.28731797758290817
+        "square size error %": 0.28731797758290817
        },
        "max": {
-        "Feldgröße-Fehler %": 1.1037395114150805
+        "square size error %": 1.1037395114150805
        },
        "failures": [
         1,
@@ -228,18 +228,18 @@
       }
      }
     },
-    "zuordnung": {
+    "mapping": {
      "fingerprint": "2306f5a642e03708",
      "quick": false,
      "seconds": 144.4,
      "rows": {
       "0°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1723,
          1723
         ],
-        "Brett komplett": [
+        "board complete": [
          60,
          60
         ]
@@ -250,11 +250,11 @@
       },
       "20°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1674,
          1674
         ],
-        "Brett komplett": [
+        "board complete": [
          60,
          60
         ]
@@ -265,11 +265,11 @@
       },
       "30°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1681,
          1681
         ],
-        "Brett komplett": [
+        "board complete": [
          60,
          60
         ]
@@ -280,11 +280,11 @@
       },
       "35°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1650,
          1650
         ],
-        "Brett komplett": [
+        "board complete": [
          60,
          60
         ]
@@ -295,11 +295,11 @@
       },
       "50°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1722,
          1722
         ],
-        "Brett komplett": [
+        "board complete": [
          60,
          60
         ]
@@ -310,11 +310,11 @@
       },
       "60°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1688,
          1688
         ],
-        "Brett komplett": [
+        "board complete": [
          60,
          60
         ]
@@ -325,11 +325,11 @@
       },
       "70°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          1674,
          1674
         ],
-        "Brett komplett": [
+        "board complete": [
          57,
          60
         ]
@@ -347,15 +347,15 @@
      "rows": {
       "50°": {
        "counts": {
-        "Zug richtig": [
+        "move correct": [
          400,
          400
         ],
-        "markiert": [
+        "flagged": [
          0,
          400
         ],
-        "still falsch": [
+        "silently wrong": [
          0,
          400
         ]
@@ -366,15 +366,15 @@
       },
       "60°": {
        "counts": {
-        "Zug richtig": [
+        "move correct": [
          400,
          400
         ],
-        "markiert": [
+        "flagged": [
          0,
          400
         ],
-        "still falsch": [
+        "silently wrong": [
          0,
          400
         ]
@@ -385,15 +385,15 @@
       },
       "70°": {
        "counts": {
-        "Zug richtig": [
+        "move correct": [
          396,
          400
         ],
-        "markiert": [
+        "flagged": [
          4,
          400
         ],
-        "still falsch": [
+        "silently wrong": [
          0,
          400
         ]
@@ -414,13 +414,13 @@
      "quick": false,
      "seconds": 54.1,
      "rows": {
-      "ohne": {
+      "none": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          544,
          544
         ],
-        "Brett komplett": [
+        "board complete": [
          16,
          20
         ]
@@ -429,13 +429,13 @@
        "max": {},
        "failures": []
       },
-      "Maske +1 px": {
+      "mask +1 px": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          553,
          555
         ],
-        "Brett komplett": [
+        "board complete": [
          17,
          20
         ]
@@ -446,13 +446,13 @@
         7
        ]
       },
-      "Maske -1 px": {
+      "mask -1 px": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          555,
          555
         ],
-        "Brett komplett": [
+        "board complete": [
          17,
          20
         ]
@@ -461,13 +461,13 @@
        "max": {},
        "failures": []
       },
-      "Figurensatz +15 %": {
+      "piece set +15 %": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          562,
          562
         ],
-        "Brett komplett": [
+        "board complete": [
          16,
          20
         ]
@@ -476,13 +476,13 @@
        "max": {},
        "failures": []
       },
-      "Figurensatz -15 %": {
+      "piece set -15 %": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          553,
          553
         ],
-        "Brett komplett": [
+        "board complete": [
          19,
          20
         ]
@@ -491,13 +491,13 @@
        "max": {},
        "failures": []
       },
-      "Tiefe 3 px versetzt": {
+      "depth shifted 3 px": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          551,
          561
         ],
-        "Brett komplett": [
+        "board complete": [
          14,
          20
         ]
@@ -512,13 +512,13 @@
         18
        ]
       },
-      "Brett 8 mm gewölbt": {
+      "board bulged 8 mm": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          572,
          572
         ],
-        "Brett komplett": [
+        "board complete": [
          19,
          20
         ]
@@ -527,13 +527,13 @@
        "max": {},
        "failures": []
       },
-      "Brett 8 mm durchgehängt": {
+      "board sagged 8 mm": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          571,
          571
         ],
-        "Brett komplett": [
+        "board complete": [
          20,
          20
         ]
@@ -546,42 +546,42 @@
     }
    },
    "quick": {
-    "ecken": {
+    "corners": {
      "fingerprint": "737b6a117114e729",
      "quick": true,
      "seconds": 0.6,
      "rows": {
       "0-45°": {
        "counts": {
-        "Ecken gefunden": [
+        "corners found": [
          392,
          392
         ]
        },
        "values": {
         "RMSE px": 0.04072266949893326,
-        "95%-Quantil px": 0.06990309079983516
+        "95% quantile px": 0.06990309079983516
        },
        "max": {
         "RMSE px": 0.04072266949893326,
-        "95%-Quantil px": 0.06990309079983516
+        "95% quantile px": 0.06990309079983516
        },
        "failures": []
       }
      }
     },
-    "brett": {
+    "board": {
      "fingerprint": "8d1dd30032bb5d81",
      "quick": true,
      "seconds": 3.5,
      "rows": {
-      "Figuren 30-45°": {
+      "pieces 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          6,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -590,13 +590,13 @@
        "max": {},
        "failures": []
       },
-      "Figuren 45-60°": {
+      "pieces 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          6,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -605,13 +605,13 @@
        "max": {},
        "failures": []
       },
-      "Störmuster 30-45°": {
+      "clutter 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          6,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -620,13 +620,13 @@
        "max": {},
        "failures": []
       },
-      "Störmuster 45-60°": {
+      "clutter 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          6,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -637,100 +637,100 @@
       }
      }
     },
-    "einmessen": {
+    "calibration": {
      "fingerprint": "e7a0afbe89b72e8d",
      "quick": true,
      "seconds": 15.3,
      "rows": {
       "35°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          6,
          6
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          6
         ],
-        "Brett komplett": [
+        "board complete": [
          6,
          6
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.22880301209764106
+        "square size error %": 0.22880301209764106
        },
        "max": {
-        "Feldgröße-Fehler %": 0.32771790336585394
+        "square size error %": 0.32771790336585394
        },
        "failures": []
       },
       "50°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          6,
          6
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          6
         ],
-        "Brett komplett": [
+        "board complete": [
          6,
          6
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.1766489929872365
+        "square size error %": 0.1766489929872365
        },
        "max": {
-        "Feldgröße-Fehler %": 0.3218339107687873
+        "square size error %": 0.3218339107687873
        },
        "failures": []
       },
       "60°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          6,
          6
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          6
         ],
-        "Brett komplett": [
+        "board complete": [
          6,
          6
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.25835236073991075
+        "square size error %": 0.25835236073991075
        },
        "max": {
-        "Feldgröße-Fehler %": 0.38351592493928166
+        "square size error %": 0.38351592493928166
        },
        "failures": []
       },
       "70°": {
        "counts": {
-        "eingemessen": [
+        "calibrated": [
          5,
          6
         ],
-        "falsch eingemessen": [
+        "miscalibrated": [
          0,
          6
         ],
-        "Brett komplett": [
+        "board complete": [
          4,
          6
         ]
        },
        "values": {
-        "Feldgröße-Fehler %": 0.2083124372038614
+        "square size error %": 0.2083124372038614
        },
        "max": {
-        "Feldgröße-Fehler %": 0.3756476193958136
+        "square size error %": 0.3756476193958136
        },
        "failures": [
         1,
@@ -739,18 +739,18 @@
       }
      }
     },
-    "zuordnung": {
+    "mapping": {
      "fingerprint": "887dda35a0ec6ea9",
      "quick": true,
      "seconds": 33.5,
      "rows": {
       "0°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          330,
          330
         ],
-        "Brett komplett": [
+        "board complete": [
          12,
          12
         ]
@@ -761,11 +761,11 @@
       },
       "20°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          337,
          337
         ],
-        "Brett komplett": [
+        "board complete": [
          12,
          12
         ]
@@ -776,11 +776,11 @@
       },
       "30°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          327,
          327
         ],
-        "Brett komplett": [
+        "board complete": [
          12,
          12
         ]
@@ -791,11 +791,11 @@
       },
       "35°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          333,
          333
         ],
-        "Brett komplett": [
+        "board complete": [
          12,
          12
         ]
@@ -806,11 +806,11 @@
       },
       "50°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          346,
          346
         ],
-        "Brett komplett": [
+        "board complete": [
          12,
          12
         ]
@@ -821,11 +821,11 @@
       },
       "60°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          320,
          320
         ],
-        "Brett komplett": [
+        "board complete": [
          12,
          12
         ]
@@ -836,11 +836,11 @@
       },
       "70°": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          342,
          342
         ],
-        "Brett komplett": [
+        "board complete": [
          11,
          12
         ]
@@ -858,15 +858,15 @@
      "rows": {
       "50°": {
        "counts": {
-        "Zug richtig": [
+        "move correct": [
          50,
          50
         ],
-        "markiert": [
+        "flagged": [
          0,
          50
         ],
-        "still falsch": [
+        "silently wrong": [
          0,
          50
         ]
@@ -877,15 +877,15 @@
       },
       "60°": {
        "counts": {
-        "Zug richtig": [
+        "move correct": [
          50,
          50
         ],
-        "markiert": [
+        "flagged": [
          0,
          50
         ],
-        "still falsch": [
+        "silently wrong": [
          0,
          50
         ]
@@ -896,15 +896,15 @@
       },
       "70°": {
        "counts": {
-        "Zug richtig": [
+        "move correct": [
          50,
          50
         ],
-        "markiert": [
+        "flagged": [
          0,
          50
         ],
-        "still falsch": [
+        "silently wrong": [
          0,
          50
         ]
@@ -920,13 +920,13 @@
      "quick": true,
      "seconds": 13.9,
      "rows": {
-      "ohne": {
+      "none": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          110,
          110
         ],
-        "Brett komplett": [
+        "board complete": [
          3,
          4
         ]
@@ -935,13 +935,13 @@
        "max": {},
        "failures": []
       },
-      "Maske +1 px": {
+      "mask +1 px": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          106,
          106
         ],
-        "Brett komplett": [
+        "board complete": [
          4,
          4
         ]
@@ -950,13 +950,13 @@
        "max": {},
        "failures": []
       },
-      "Maske -1 px": {
+      "mask -1 px": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          107,
          107
         ],
-        "Brett komplett": [
+        "board complete": [
          2,
          4
         ]
@@ -965,13 +965,13 @@
        "max": {},
        "failures": []
       },
-      "Figurensatz +15 %": {
+      "piece set +15 %": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          115,
          115
         ],
-        "Brett komplett": [
+        "board complete": [
          4,
          4
         ]
@@ -980,13 +980,13 @@
        "max": {},
        "failures": []
       },
-      "Figurensatz -15 %": {
+      "piece set -15 %": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          106,
          106
         ],
-        "Brett komplett": [
+        "board complete": [
          4,
          4
         ]
@@ -995,13 +995,13 @@
        "max": {},
        "failures": []
       },
-      "Tiefe 3 px versetzt": {
+      "depth shifted 3 px": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          109,
          110
         ],
-        "Brett komplett": [
+        "board complete": [
          3,
          4
         ]
@@ -1012,13 +1012,13 @@
         1
        ]
       },
-      "Brett 8 mm gewölbt": {
+      "board bulged 8 mm": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          110,
          110
         ],
-        "Brett komplett": [
+        "board complete": [
          3,
          4
         ]
@@ -1027,13 +1027,13 @@
        "max": {},
        "failures": []
       },
-      "Brett 8 mm durchgehängt": {
+      "board sagged 8 mm": {
        "counts": {
-        "Figur richtig": [
+        "piece correct": [
          117,
          117
         ],
-        "Brett komplett": [
+        "board complete": [
          4,
          4
         ]
@@ -1048,25 +1048,25 @@
   },
   "original": {
    "full": {
-    "ecken": {
+    "corners": {
      "fingerprint": "9285ae24ec470d3d",
      "quick": false,
      "seconds": 5.1,
      "rows": {
       "0-45°": {
        "counts": {
-        "Ecken gefunden": [
+        "corners found": [
          1958,
          1960
         ]
        },
        "values": {
         "RMSE px": 0.3494514152402587,
-        "95%-Quantil px": 0.5120272333594519
+        "95% quantile px": 0.5120272333594519
        },
        "max": {
         "RMSE px": 0.3494514152402587,
-        "95%-Quantil px": 0.5120272333594519
+        "95% quantile px": 0.5120272333594519
        },
        "failures": [
         9,
@@ -1075,18 +1075,18 @@
       }
      }
     },
-    "brett": {
+    "board": {
      "fingerprint": "f62421036fb7b78f",
      "quick": false,
      "seconds": 11.4,
      "rows": {
-      "Figuren 30-45°": {
+      "pieces 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          8,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -1118,13 +1118,13 @@
         28
        ]
       },
-      "Figuren 45-60°": {
+      "pieces 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          0,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -1164,13 +1164,13 @@
         29
        ]
       },
-      "Störmuster 30-45°": {
+      "clutter 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          3,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -1207,13 +1207,13 @@
         29
        ]
       },
-      "Störmuster 45-60°": {
+      "clutter 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          1,
          30
         ],
-        "verschoben": [
+        "shifted": [
          0,
          30
         ]
@@ -1256,42 +1256,42 @@
     }
    },
    "quick": {
-    "ecken": {
+    "corners": {
      "fingerprint": "737b6a117114e729",
      "quick": true,
      "seconds": 0.9,
      "rows": {
       "0-45°": {
        "counts": {
-        "Ecken gefunden": [
+        "corners found": [
          392,
          392
         ]
        },
        "values": {
         "RMSE px": 0.350524178767913,
-        "95%-Quantil px": 0.5103076315896155
+        "95% quantile px": 0.5103076315896155
        },
        "max": {
         "RMSE px": 0.350524178767913,
-        "95%-Quantil px": 0.5103076315896155
+        "95% quantile px": 0.5103076315896155
        },
        "failures": []
       }
      }
     },
-    "brett": {
+    "board": {
      "fingerprint": "8d1dd30032bb5d81",
      "quick": true,
      "seconds": 2.4,
      "rows": {
-      "Figuren 30-45°": {
+      "pieces 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          3,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -1304,13 +1304,13 @@
         5
        ]
       },
-      "Figuren 45-60°": {
+      "pieces 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          0,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -1326,13 +1326,13 @@
         5
        ]
       },
-      "Störmuster 30-45°": {
+      "clutter 30-45°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          2,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]
@@ -1346,13 +1346,13 @@
         5
        ]
       },
-      "Störmuster 45-60°": {
+      "clutter 45-60°": {
        "counts": {
-        "Brett richtig": [
+        "board correct": [
          0,
          6
         ],
-        "verschoben": [
+        "shifted": [
          0,
          6
         ]

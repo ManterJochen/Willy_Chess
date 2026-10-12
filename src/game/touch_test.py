@@ -36,13 +36,13 @@ def main(argv: list[str] | None = None) -> int:
         cell.go_look()
         result = cell.mapping.calibrate()
         if result.calibration is None:
-            print(f"Einmessen abgelehnt: {result.reason}")
+            print(f"Calibration refused: {result.reason}")
             return 1
-        print(f"Eingemessen: Feld {cell.mapping.square * 1000:.1f} mm, {result.corners} Ecken, "
-              f"Reprojektion {result.reprojection_px:.2f} px")
+        print(f"Calibrated: square {cell.mapping.square * 1000:.1f} mm, {result.corners} corners, "
+              f"reprojection {result.reprojection_px:.2f} px")
         for square in SQUARES:
             x, y, z = cell.mapping.square_center_base(square, args.height_mm / 1000.0)
-            input(f"Enter: {args.height_mm:.0f} mm über {chess.square_name(square)} ({x:.1f}, {y:.1f}, {z:.1f} mm) ")
+            input(f"Enter: {args.height_mm:.0f} mm above {chess.square_name(square)} ({x:.1f}, {y:.1f}, {z:.1f} mm) ")
             report = cell.robot.move(cell.robot.tool_down(x, y, z), **cell.decline)
             if not report.ok:
                 print(report)
