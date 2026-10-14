@@ -23,6 +23,7 @@ source .venv/bin/activate            # Windows: .\.venv\Scripts\Activate.ps1
 git clone https://github.com/ManterJochen/Workaholic-Willy.git external/Workaholic-Willy
 pip install -r requirements.txt
 pip install -e .\external\Workaholic-Willy --no-deps
+python -m src.pieces.fetch           # RT-DETR base + SAM2 (1.1 GB)
 ```
 
 ## ♟️ Playing
@@ -79,6 +80,7 @@ The math behind every stage, explained step by step: [docs/board_detection_math.
 | `ShutterStamp`, `camera_to_base_at_shutter` | `WillyCameraPose` in [`chessboard_mapping_3d.py`](src/mapping/chessboard_mapping_3d.py) | where the camera stood for each frame, wrist or fixed |
 | `ObjectDetector.from_weights(...).detect(segment=True)` | [`play.py`](src/game/play.py), `ChessBoardMapping3D` | pieces with SAM2 masks, on the board crop only |
 | `DetectorTraining` | [`src/pieces/train.py`](src/pieces/train.py) | training the piece detector |
+| `scripts/model_weights/fetch.py` | [`src/pieces/fetch.py`](src/pieces/fetch.py) | RT-DETR base and SAM2 into Willy's assets, TLS through the OS trust store (truststore) |
 | `Robot`: `connected`, `home`, `move_joints`, `move`, `tool_down`, `pick`, `place`, `release` | [`robot_moves.py`](src/game/robot_moves.py), [`play.py`](src/game/play.py), [`touch_test.py`](src/game/touch_test.py) | every motion, gated by Willy's safety |
 | `SegmentationOffer` | `RobotMover` in [`robot_moves.py`](src/game/robot_moves.py) | with a camera world: the piece to grip held out of it, the others as named obstacles |
 
