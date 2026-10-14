@@ -4,7 +4,9 @@ Train the chess piece detector (RT-DETR) with Workaholic-Willy's DetectorTrainin
 The dataset is the YOLO set in data/ with the 12 classes "white pawn" ... "black king".
 The best epoch lands in docs/weights/chess_pieces_rtdetr, its model.safetensors through Git LFS.
 
-Run on the workstation (CUDA GPU), from the repository root:
+Run on the workstation (CUDA GPU), from the repository root; the base model comes from
+src/pieces/fetch.py, once per machine:
+    python -m src.pieces.fetch
     python -m src.pieces.train
     python -m src.pieces.train --data data/chess --epochs 80 --image-size 800
     python -m src.pieces.train --smoke      # 2 epochs on 64 images: proves the chain, not a model
