@@ -3,7 +3,7 @@ ChessBoardMapping3D: the real board as the robot sees it, square by square, in i
 
 One class from the camera frame to robot coordinates:
 1. Grab a frame and where the camera stood (fixed camera or eye in hand, through Willy's
-   shutter stamp), undistort colour and depth once, depth to metres.
+   capture), undistort colour and depth once, depth to metres.
 2. Find the pieces only where the board is: the board volume projected into the image gives
    the crop for the detector (fewer pixels for RT-DETR and SAM2, more pixels per piece).
 3. Calibrate once in the starting position (src/mapping/calibration.py) and lock the board pose
@@ -16,7 +16,8 @@ One class from the camera frame to robot coordinates:
 """
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Protocol
+from types import SimpleNamespace
+from typing import Any, Iterable, Protocol
 
 import cv2 as cv
 import numpy as np
@@ -60,39 +61,30 @@ class StaticCameraPose:
 
 class WillyCameraPose:
     """
-    Camera pose per frame through Workaholic-Willy, for a fixed camera and a camera on the wrist.
+    Camera pose per frame through Workaholic-Willy's capture, for a fixed camera and a camera on the wrist.
 
-    A fixed camera (eye_to_hand) is placed by its calibration. A wrist camera (eye_in_hand) is
-    placed by the tool pose read at its shutter; a frame taken while the arm moved beyond the
-    rig's tolerance is grabbed again and refused if the arm never held still.
+    A fixed camera (eye_to_hand) is placed by its calibration. A wrist camera (eye_in_hand) is placed
+    by the tool pose read at its shutter, after the arm's steady gate said it stands still. The depth
+    is the per-pixel median of a burst of grabs, as Willy takes it for a pick: flicker that fewer than
+    half of the grabs read (flying pixels at piece edges) is gone, and the noise of n = 7 grabs drops to
+    about sqrt(pi / 2) / sqrt(n) = 0.47 of one grab's.
 
     Args:
         camera: An opened willy.Camera.
-        tcp_reader (Callable | None): The arm's TCP reader (robot.arm.get_tcp_pose), needed for a wrist camera.
-        attempts (int): Grabs after the first while the arm still moves.
+        robot: The connected willy.Robot that carries a wrist camera; not read for a fixed one.
     """
 
-    def __init__(self, camera: Any, tcp_reader: Callable[[], Any] | None = None, attempts: int = 3):
-        from src.robot.core.shutter_motion import ShutterStamp  # Willy, imported only when it is used
-
-        self.calibration = camera.calibration()
-        self.stamp = None
-        if self.calibration.mounting_mode == "eye_in_hand":
-            if tcp_reader is None:
-                raise ValueError("a wrist camera needs the arm's TCP reader (robot.arm.get_tcp_pose)")
-            tolerance = (self.calibration.shutter_motion_tolerance_mm or 1.0,
-                         self.calibration.shutter_motion_tolerance_deg or 0.5)
-            self.stamp = ShutterStamp.of(tcp_reader, motion_tolerance=tolerance, attempts=attempts)
+    def __init__(self, camera: Any, robot: Any = None):
+        self.robot = robot
+        self.on_wrist = str(camera.calibration().mounting_mode) == "eye_in_hand"
 
     def grab(self, camera: Camera) -> tuple[Any, np.ndarray]:
-        from src.robot.core.shutter_motion import camera_to_base_at_shutter
+        from willy import capture
 
-        if self.stamp is None:
-            return camera.grab(), camera_to_base_at_shutter(self.calibration, None)
-        stamped = self.stamp.grab(camera.grab)
-        if stamped.tool_pose is None:
-            raise RuntimeError("the arm moved during every grab; hold it still at the look pose")
-        return stamped.frame, camera_to_base_at_shutter(self.calibration, stamped.tool_pose)
+        frame = capture(camera, self.robot)
+        rgbd = SimpleNamespace(color=frame.color, depth=np.asarray(frame.depth_mm, np.float32) / 1000.0,
+                               captured_at_s=frame.captured_at_s)
+        return rgbd, frame.camera_to_base_mm
 
 
 @dataclass

@@ -75,9 +75,9 @@ The math behind every stage, explained step by step: [docs/board_detection_math.
 
 | Willy | Where | What for |
 | --- | --- | --- |
-| `load_tree(None, root=<data dir>)`, `CameraWorldPlan`, `tree.robot.look_joint_positions_deg`, `robot.grasping.gripper_geometry` | [`src/game/play.py`](src/game/play.py), [`robot_moves.py`](src/game/robot_moves.py) | the cell: cameras, whether the arm plans with a camera world, look pose, finger size |
+| `load_tree(None, root=<data dir>)`, `CameraWorldPlan`, `tree.robot.motion.look_deg`, `jaw_envelope(tree.robot)` | [`src/game/play.py`](src/game/play.py), [`robot_moves.py`](src/game/robot_moves.py) | the cell: cameras, whether the arm plans with a camera world, look pose, finger size |
 | `Camera` (`grab`, `get_intrinsics`, `get_distortion`, `calibration`) | [`chessboard_mapping_3d.py`](src/mapping/chessboard_mapping_3d.py) | colour + aligned depth, lens, hand-eye calibration |
-| `ShutterStamp`, `camera_to_base_at_shutter` | `WillyCameraPose` in [`chessboard_mapping_3d.py`](src/mapping/chessboard_mapping_3d.py) | where the camera stood for each frame, wrist or fixed |
+| `capture` | `WillyCameraPose` in [`chessboard_mapping_3d.py`](src/mapping/chessboard_mapping_3d.py) | each frame with where the camera stood, wrist or fixed, the arm asked to stand still first, the depth the median of a burst |
 | `ObjectDetector.from_weights(...).detect(segment=True)` | [`play.py`](src/game/play.py), `ChessBoardMapping3D` | pieces with SAM2 masks, on the board crop only |
 | `DetectorTraining` | [`src/pieces/train.py`](src/pieces/train.py) | training the piece detector |
 | `scripts/model_weights/fetch.py` | [`src/pieces/fetch.py`](src/pieces/fetch.py) | RT-DETR base and SAM2 into Willy's assets, TLS through the OS trust store (truststore) |

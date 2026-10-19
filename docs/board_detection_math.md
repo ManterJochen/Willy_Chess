@@ -242,8 +242,10 @@ hand-eye calibration. So:
 {}^{\text{tool}}\mathbf T_{\text{camera}}\;{}^{\text{camera}}\mathbf T_{\text{board}} .
 ```
 
-With a fixed camera, the tool term drops out. Willy's `ShutterStamp` reads the tool pose right before and after the
-shot and takes the picture again if the arm moved in between.
+With a fixed camera, the tool term drops out. Willy's `capture` first asks the arm whether it stands still, reads the
+tool pose at the shutter, and keeps the per-pixel median of a burst of 7 depth images. A flicker that fewer than half
+of them read (flying pixels at the edge of a piece) is gone, and the noise of the rest drops to about
+$\sqrt{\pi/2}/\sqrt 7 \approx 0.47$ of a single image's.
 
 **Every further view** predicts the board from this lock, backwards through the same chain. The visible corners
 correct the prediction (kinematics and hand-eye calibration are never perfect):

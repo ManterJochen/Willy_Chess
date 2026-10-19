@@ -9,11 +9,11 @@ willy:
 
 detector:
   weights: docs/weights/chess_pieces_rtdetr    # DetectorTraining out_dir (Git LFS)
-  threshold: null                              # score a piece must clear; null = the detector's own
+  threshold: 0.02                              # score of 0.02 destroys the background but keeps pieces.
   segmenter: null                              # SAM2 folder or Hugging Face id; null = Willy's default
 
 game:
-  human_color: white            # preselected when the game asks at the start (W / S)
+  human_color: white            # preselected when the game asks at the start (W / B)
   # No spare queen: the pawn stays on the promotion square and counts as the new piece.
   # piece_swapped: the promoted piece physically replaces the pawn (Willy asks you to swap it).
   promotion_mode: pawn_stays    # pawn_stays | piece_swapped

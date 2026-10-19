@@ -155,6 +155,9 @@ class PygameView:
     def _draw_piece(self, symbol: str, x: int, y: int) -> None:
         cx, cy = x + SQUARE // 2, y + SQUARE // 2
         if self.glyphs is not None:
+            if symbol.isupper():                    # the white glyph is an outline: fill it, or a dark square shows
+                fill = self.glyphs.render(GLYPHS[symbol.lower()], True, (250, 250, 250))
+                self.screen.blit(fill, fill.get_rect(center=(cx, cy + 2)))
             glyph = self.glyphs.render(GLYPHS[symbol], True, (20, 20, 20))
             self.screen.blit(glyph, glyph.get_rect(center=(cx, cy + 2)))
             return
@@ -224,7 +227,8 @@ class PygameView:
             sans.append(board.san(move))
             board.push(move)
         pairs = [f"{first + i // 2}. {' '.join(sans[i:i + 2])}" for i in range(0, len(sans), 2)]
-        for line in pairs[-6:]:
+        room = min(6, max(0, (SIZE[1] - MARGIN - 12 - y) // 22))           # the lines above the help text
+        for line in pairs[len(pairs) - room:]:
             self.screen.blit(self.font.render(line, True, MUTED), (x, y))
             y += 22
         return y

@@ -38,8 +38,10 @@ class JawGeometry:
 
     @classmethod
     def from_tree(cls, tree) -> "JawGeometry":
-        """The cell's hand from Willy's config tree (robot.grasping.gripper_geometry, robot.gripper)."""
-        jaw = tree.robot.grasping.gripper_geometry.parallel_jaw
+        """The cell's hand: the fingers from its registry file (robot.gripper.model), the opening from robot.gripper."""
+        from src.robot.grasping.collision.gripper_model import jaw_envelope  # Willy's one reader of the hand
+
+        jaw = jaw_envelope(tree.robot)
         return cls(jaw.finger_thickness_mm / 1000.0, jaw.finger_width_mm / 1000.0, tree.robot.gripper.max_width_mm / 1000.0)
 
 

@@ -6,7 +6,6 @@ calibration and keep-out types. Skipped where Willy is not installed.
 """
 import sys
 import unittest
-from dataclasses import dataclass
 from pathlib import Path
 
 import chess
@@ -74,35 +73,48 @@ class WillyIntegrationTest(unittest.TestCase):
         centre = self.mapping.square_center_base(sq)
         self.assertLess(np.linalg.norm(np.median(offer.target_points_base_mm, axis=0)[:2] - centre[:2]), 0.6 * 1000 * self.mapping.square)
 
-    def test_a_wrist_camera_is_placed_by_the_tool_pose_at_its_shutter(self):
-        """WillyCameraPose with Willy's RigCalibration (eye_in_hand) and the dummy arm's TCP reader."""
+    def test_a_frame_comes_through_willys_capture_as_the_median_of_a_burst(self):
+        """WillyCameraPose through willy.capture (a fixed camera, placed by its calibration): the depth in metres,
+        the per-pixel median of the burst, so a flying pixel that a third of the grabs read is gone."""
         from src.calibration.rig_calibration import RigCalibration
+        from src.camera.setup.image_taking.frames import RGBDFrame
         from src.geometry import Frame
         from src.geometry.transform import Transform
 
         from src.mapping.chessboard_mapping_3d import WillyCameraPose
 
-        camera_to_tool = np.eye(4)
-        camera_to_tool[:3, 3] = [0.0, 60.0, 40.0]
-        calibration = RigCalibration("wrist", "eye_in_hand", "unused.json",
-                                     Transform.from_matrix(camera_to_tool, from_frame=Frame.CAMERA, to_frame=Frame.TOOL),
-                                     shutter_motion_tolerance_mm=1.0, shutter_motion_tolerance_deg=0.5)
+        camera_to_base = np.eye(4)
+        camera_to_base[:3, 3] = [400.0, 0.0, 750.0]
+        calibration = RigCalibration("overhead", "eye_to_hand", "unused.json",
+                                     Transform.from_matrix(camera_to_base, from_frame=Frame.CAMERA, to_frame=Frame.BASE))
 
-        @dataclass
-        class WristCamera:
+        class Handle:
+            rig_id, grabs = "overhead", 0
+
+            def grab(self):
+                self.grabs += 1
+                depth = np.full((48, 64), 700, np.uint16)
+                depth[10, 10] = 900 if self.grabs % 3 == 0 else 700
+                return RGBDFrame(color=np.zeros((48, 64, 3), np.uint8), depth=depth, captured_at_s=1.0)
+
+            def get_intrinsics(self):
+                return np.array([[60.0, 0.0, 32.0], [0.0, 60.0, 24.0], [0.0, 0.0, 1.0]])
+
+        class FixedCamera:
+            rig_id, source, the_handle = "overhead", "rgbd", Handle()
+
+            def handle(self):
+                return self.the_handle
+
             def calibration(self):
                 return calibration
 
-            def grab(self):
-                return "frame"
-
-        with self.robot.connected():
-            self.robot.home(decline="chess: test at the desk")
-            pose = WillyCameraPose(WristCamera(), tcp_reader=self.robot.arm.get_tcp_pose)
-            frame, camera_to_base = pose.grab(WristCamera())
-            tool_to_base = np.asarray(self.robot.arm.get_tcp_pose().to_matrix())
-        self.assertEqual(frame, "frame")
-        np.testing.assert_allclose(camera_to_base, tool_to_base @ camera_to_tool, atol=1e-6)
+        pose = WillyCameraPose(FixedCamera())
+        frame, placed = pose.grab(FixedCamera())
+        self.assertFalse(pose.on_wrist)
+        self.assertGreaterEqual(FixedCamera.the_handle.grabs, 7)                 # a burst, not one grab
+        np.testing.assert_allclose(frame.depth, 0.7)
+        np.testing.assert_allclose(placed, camera_to_base)
 
 
 @unittest.skipIf(willy is None, "Workaholic-Willy is not installed")
@@ -120,6 +132,18 @@ class CellTreeTest(unittest.TestCase):
                 load_cell_tree(data_dir)
             self.assertIn("Willy data directory", str(refused.exception))
 
+    def test_the_keys_the_game_reads_are_in_willys_tree(self):
+        """What open_cell and JawGeometry read of a tree: a key Willy renames fails here, not at the cell."""
+        from src.game.play import load_cell_tree
+        from src.game.robot_moves import JawGeometry
+
+        tree = load_cell_tree("external/Workaholic-Willy/config")
+        jaw = JawGeometry.from_tree(tree)
+        self.assertGreater(jaw.finger_thickness, 0.0)
+        self.assertAlmostEqual(jaw.max_open, tree.robot.gripper.max_width_mm / 1000.0)
+        self.assertTrue(hasattr(tree.robot.motion, "look_deg"))
+        self.assertTrue(tree.app_config.camera.cameras.primary_rig_id)
+
 
 class WeightsCheckTest(unittest.TestCase):
     def test_a_git_lfs_pointer_is_refused(self):
@@ -132,6 +156,24 @@ class WeightsCheckTest(unittest.TestCase):
             with self.assertRaises(SystemExit) as refused:
                 check_weights(Path(folder))
             self.assertIn("git lfs pull", str(refused.exception))
+
+
+@unittest.skipIf(willy is None, "Workaholic-Willy is not installed")
+class DeskRunTest(unittest.TestCase):
+    def test_a_whole_game_runs_at_the_desk(self):
+        """desk_run: play_games with Stockfish, Willy's dummy arm and the Pygame view, up to the saved PGN."""
+        import tempfile
+
+        import desk_run
+        from src.game.engine import find_stockfish
+
+        try:
+            find_stockfish()
+        except FileNotFoundError:
+            self.skipTest("no Stockfish on this machine")
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual(desk_run.main(["--headless", "--seed", "2", "--pgn-dir", folder]), 0)
+            self.assertEqual(len(list(Path(folder).glob("*.pgn"))), 1)
 
 
 if __name__ == "__main__":

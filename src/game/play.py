@@ -96,7 +96,7 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
     plan = CameraWorldPlan.from_config(tree.robot, list(section.rigs), primary_rig_id=section.primary_rig_id)
     camera_world = bool(plan.rig_ids)
     if not camera_world:
-        print(f"Ohne Kamerawelt: {plan.reason}")
+        print(f"No camera world: {plan.reason}")
     decline = {} if camera_world else {"decline": DECLINE}
 
     with ExitStack() as stack:
@@ -104,15 +104,15 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
                    for rig in (plan.rig_ids or (section.primary_rig_id,))]
         robot = Robot.from_tree(tree, cameras=cameras) if camera_world else Robot.from_tree(tree)
         detector = ObjectDetector.from_weights(str(weights), segmenter=config.detector.segmenter)
-        camera_pose = WillyCameraPose(cameras[0], tcp_reader=robot.arm.get_tcp_pose)
+        camera_pose = WillyCameraPose(cameras[0], robot)
         mapping = ChessBoardMapping3D(cameras[0], detector, camera_pose, detector_threshold=config.detector.threshold,
                                       grasp_height_fraction=config.robot.grasp_height_fraction)
         mover = RobotMover(robot, mapping, config.robot, JawGeometry.from_tree(tree), camera_world)
-        looks = tree.robot.look_joint_positions_deg or ()
+        looks = tree.robot.motion.look_deg or ()
 
         def go_look() -> None:
             """Wrist camera: to the first look pose. Fixed camera: home, out of its view."""
-            if camera_pose.stamp is not None and looks:
+            if camera_pose.on_wrist and looks:
                 report = robot.move_joints(JointPositions.deg(*looks[0]), **decline)
             else:
                 report = robot.home(**decline)
@@ -121,6 +121,17 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
 
         stack.enter_context(robot.connected())
         yield Cell(robot, mapping, mover, go_look, decline)
+
+
+def play_games(cell: Cell, engine: Any, view: Any, config: ChessConfig, recorder: Recorder | None = None) -> ChessGame:
+    """Game after game until the human stops: every game with moves saved as PGN. Returns the last game."""
+    while True:
+        game = ChessGame(cell.mapping, engine, cell.mover, view, config, cell.go_look, recorder)
+        result = game.run()
+        if game.tracker is not None and game.tracker.board.move_stack:
+            print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir)}")
+        if result == "*" or not game.ask_new_game():
+            return game
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,13 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         return tree.exit_code
     recorder = Recorder(REPO_ROOT / config.record.out_dir) if config.record.enabled else None
     with open_cell(tree, config) as cell, Engine(config.engine) as engine, PygameView() as view:
-        while True:
-            game = ChessGame(cell.mapping, engine, cell.mover, view, config, cell.go_look, recorder)
-            result = game.run()
-            if game.tracker is not None and game.tracker.board.move_stack:
-                print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir)}")
-            if result == "*" or not game.ask_new_game():
-                return 0
+        play_games(cell, engine, view, config, recorder)
+    return 0
 
 
 if __name__ == "__main__":
