@@ -58,7 +58,7 @@
     256,
     256
   ],
-  "decoder_layers": 6,
+  "decoder_layers": 5,
   "decoder_n_points": 4,
   "disable_custom_kernels": true,
   "dropout": 0.0,

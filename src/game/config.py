@@ -106,8 +106,10 @@ def load_config(path: str | Path | None = None) -> ChessConfig:
         ChessConfig: The validated settings.
 
     Raises:
-        ValueError: An unknown key (with its dotted name) or a value no game can run with.
+        ValueError: A file named but not there, an unknown key (with its dotted name) or a value no game can run with.
     """
+    if path is not None and not Path(path).is_file():
+        raise ValueError(f"no chess config at {path}")
     path = Path(path) if path is not None else DEFAULT_CONFIG
     data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
     return _merge(ChessConfig(), data or {}, "").validate()

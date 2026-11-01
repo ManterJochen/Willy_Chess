@@ -14,7 +14,7 @@ import numpy as np
 
 from src.game.config import ChessConfig
 from src.game.robot_moves import PIECE_NAMES, MoveExecution, RobotMover, plan_transfers
-from src.game.tracker import MoveTracker
+from src.game.tracker import MoveTracker, physical_after
 from src.mapping.chessboard_mapping_3d import BoardObservation, ChessBoardMapping3D
 from src.mapping.geometry import square_centres
 from src.pieces.record import Recorder
@@ -48,8 +48,8 @@ class View(Protocol):
     def wait(self, state: ViewState, accept: set[str]) -> str:
         """
         Block until the human gives one of the accepted answers: "done" (space bar), "recalibrate" (R),
-        "quit" (Esc), "resign" (G), "draw" (D), a promotion piece "q", "r", "b", "n", a colour "white" (W)
-        or "black" (B), or, if "move" is accepted, "move:<uci>" (two squares clicked).
+        "quit" (Esc), "resign" (G), "draw" (D), "force" (F), a promotion piece "q", "r", "b", "n", a colour
+        "white" (W) or "black" (B), or, if "move" is accepted, "move:<uci>" (two squares clicked).
         """
         ...
 
@@ -161,8 +161,11 @@ class ChessGame:
 
     def ask_new_game(self) -> bool:
         """After a game: another one? The human sets up the starting position and clears the graveyard."""
-        return self._ask(f"{self.state.status} New game: set up the starting position, clear the graveyard, "
-                         f"press space. Esc: end.", {"done", "quit"}) == "done"
+        try:
+            return self._ask(f"{self.state.status} New game: set up the starting position, clear the graveyard, "
+                             f"press space. Esc: end.", {"done", "quit"}) == "done"
+        except GameAborted:                                   # the window was closed
+            return False
 
     def choose_color(self) -> None:
         """The human picks a side; the space bar keeps the one preselected in the config."""
@@ -175,9 +178,15 @@ class ChessGame:
             self.human = chess.WHITE if answer == "white" else chess.BLACK
         self.state.human_color = self.human
 
-    def calibrate(self) -> None:
-        """Calibrate until it succeeds; in a running game against the position the tracker knows."""
-        expected = self.tracker.physical if self.tracker is not None else None
+    def calibrate(self, shown: dict[int, str] | None = None) -> None:
+        """
+        Calibrate until it succeeds; in a running game against the position the tracker knows.
+
+        Args:
+            shown (dict[int, str] | None): The pieces the board shows instead, when it is ahead of the tracker: Willy's
+                move is made but not confirmed yet.
+        """
+        expected = shown if shown is not None else self.tracker.physical if self.tracker is not None else None
         while True:
             self._status("Willy is calibrating the board ...")
             # a refusal is fail-closed and every grab has new noise, so try a few frames before asking
@@ -187,7 +196,10 @@ class ChessGame:
                     break
             if result.calibration is not None:
                 break
-            answer = self._ask(f"Calibration refused: {result.reason}. Check the board, then press space.",
+            # it compares with the position before the human's move: a move already made is a piece out of place
+            human_to_move = self.tracker is not None and shown is None and self.tracker.board.turn == self.human
+            taken_back = " If you have moved already, take the move back and play it again afterwards." if human_to_move else ""
+            answer = self._ask(f"Calibration refused: {result.reason}.{taken_back} Check the board, then press space.",
                                {"done", "quit"})
             if answer == "quit":
                 raise GameAborted
@@ -195,10 +207,12 @@ class ChessGame:
             t = self.config.tracking
             self.tracker = MoveTracker(result.calibration, sigma=t.sigma_squares, gate=t.gate,
                                        class_cost=t.class_cost, promotion_mode=self.config.game.promotion_mode)
+        else:
+            self.tracker.recalibrated(result.calibration)
         self.piece_xy = {}
         observation = self._observe()
         if observation is not None:
-            self._remember_positions(observation, changed=set())
+            self._remember_positions(observation, changed=set(), record=shown is None)
         self._sync()
 
     # ------------------------------------------------------------------ turns
@@ -212,7 +226,8 @@ class ChessGame:
             if answer == "resign":
                 raise GameOver("0-1" if self.human == chess.WHITE else "1-0", "you resigned")
             if answer == "draw":
-                if self.engine.score(self.tracker.board, not self.human) <= DRAW_ACCEPT_CP:
+                score = self._safely("Stockfish", lambda: self.engine.score(self.tracker.board, not self.human))
+                if score <= DRAW_ACCEPT_CP:
                     raise GameOver("1/2-1/2", "draw agreed")
                 prompt = "Willy declines the draw. Your move."
                 continue
@@ -241,7 +256,7 @@ class ChessGame:
             if result.move is None:
                 prompt = "I see no move. Press space when you have moved."
                 continue
-            if result.promotion_ambiguous:
+            if result.move.promotion:     # also with the new piece on the board: one wrong class is another game
                 self._ask_promotion(result.move)
             self._remember_positions(observation, self._changed_squares(before))
             self.state.uncertain = set()
@@ -252,7 +267,7 @@ class ChessGame:
         """Stockfish moves, the robot executes, the camera confirms."""
         board = self.tracker.board
         self._status("Willy is thinking ...")
-        move = self.engine.best_move(board)
+        move = self._safely("Stockfish", lambda: self.engine.best_move(board))
         san = board.san(move)
 
         observation = self._clear_view(self._observe())       # nothing but pieces over the board before the arm moves
@@ -270,7 +285,8 @@ class ChessGame:
             execution = self.mover.execute(transfers, observation)
         except Exception as err:  # noqa: BLE001 (never repeated: a piece may have moved already)
             execution = MoveExecution(ok=False, holding=True, message=f"Willy's move aborted ({err})")
-        self.graveyard_used += sum(1 for t in execution.done if t.to_square is None)
+        # every planned slot, whatever the arm finished: the piece may lie there, by the arm's hand or a person's
+        self.graveyard_used += sum(1 for t in transfers if t.to_square is None)
 
         if not execution.ok:
             if execution.holding:
@@ -286,28 +302,44 @@ class ChessGame:
         self._confirm_own_move(move, san)
 
     def _confirm_own_move(self, move: chess.Move, san: str) -> None:
-        """Willy's move is known, so the camera only has to confirm it."""
+        """
+        Willy's move is known, so the camera only has to confirm it. From the second time it does not, the person at
+        the board may overrule the camera: a piece the detector keeps missing must not end the game.
+        """
+        shown = physical_after(self.tracker.board, self.tracker.physical, move, self.config.game.promotion_mode)
+        doubts = 0
         while True:
             observation = self._observe()
+            accept = {"done", "recalibrate", "quit"}
             if observation is not None:
                 ok, nll = self.tracker.verify(observation.frame, move, observation.calib)
                 self.state.observation = observation
                 if ok:
-                    before = dict(self.tracker.physical)
-                    self.tracker.commit(move)
-                    self._remember_positions(observation, self._changed_squares(before))
-                    self.state.uncertain = set()
-                    self._sync()
+                    self._commit_own_move(move, observation, record=True)
                     return
+                doubts += 1
                 prompt = (f"After {san} the board looks different than expected (NLL {nll:.1f}). "
                           f"Please fix it, then press space.")
+                if doubts >= 2:
+                    accept.add("force")
+                    prompt += " F: the board is right, play on."
             else:
                 prompt = "The board was moved. Press R to calibrate again."
-            answer = self._ask(prompt, {"done", "recalibrate", "quit"})
+            answer = self._ask(prompt, accept)
             if answer == "quit":
                 raise GameAborted
             if answer == "recalibrate":
-                self.calibrate()
+                self.calibrate(shown)
+            if answer == "force":
+                self._commit_own_move(move, observation, record=False)
+                return
+
+    def _commit_own_move(self, move: chess.Move, observation: BoardObservation, record: bool) -> None:
+        before = dict(self.tracker.physical)
+        self.tracker.commit(move)
+        self._remember_positions(observation, self._changed_squares(before), record=record)
+        self.state.uncertain = set()
+        self._sync()
 
     # ------------------------------------------------------------------ helpers
     def _observe(self) -> BoardObservation | None:
@@ -374,6 +406,7 @@ class ChessGame:
         except ValueError:
             return False
         board = self.tracker.board
+        before = dict(self.tracker.physical)
         if move not in board.legal_moves:
             promoted = chess.Move(move.from_square, move.to_square, promotion=chess.QUEEN)
             if promoted not in board.legal_moves:
@@ -382,6 +415,9 @@ class ChessGame:
             self._ask_promotion(promoted)
         else:
             self.tracker.commit(move)
+        for square in self._changed_squares(before):          # last seen there: another piece, or none
+            self.piece_xy.pop(square, None)
+        self.state.uncertain = set()
         self._sync()
         return True
 

@@ -121,6 +121,11 @@ class MoveTracker:
         self.physical = dict(physical) if physical is not None else _physical_from(self.board)
         self._history = []
 
+    def recalibrated(self, calib: BoardCalibration) -> None:
+        """The board was calibrated again in a running game: square size and piece set of that calibration."""
+        self.calib = calib
+        self.centres = square_centres(calib.square)
+
     def step(self, frame: BoardFrame, calib: BoardCalibration | None = None) -> TrackResult:
         """
         Explain one observation by a legal move (or none) and commit it if it passes the gate.

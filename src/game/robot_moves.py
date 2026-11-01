@@ -13,11 +13,13 @@ import numpy as np
 
 from src.game.config import GraveyardConfig, RobotConfig
 from src.mapping.chessboard_mapping_3d import BoardObservation, ChessBoardMapping3D
-from src.mapping.geometry import square_centres
+from src.mapping.geometry import BoardCalibration, square_centres
 
 PIECE_NAMES = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
 # Why a motion needs no camera world, for a cell that plans without one (Willy asks every motion for it).
 DECLINE = "chess: piece positions from ChessBoardMapping3D, no camera world"
+# A carried piece flies with its foot one standoff above the board: at least this far over the tallest piece.
+CARRY_CLEARANCE_M = 0.02
 # Closing directions on the board: along the files, along the ranks and the two diagonals.
 _DIRECTIONS = [np.array(d, float) / np.linalg.norm(d) for d in ((1, 0), (0, 1), (1, 1), (1, -1))]
 
@@ -192,7 +194,7 @@ class RobotMover:
         """Run the transfers in order; stop at the first one that does not finish."""
         result = MoveExecution(ok=True)
         for transfer in transfers:
-            ok, holding, reports, message = self._transfer(transfer, observation)
+            ok, holding, reports, message = self._transfer(transfer, observation, result.done)
             result.reports.extend(reports)
             if not ok:
                 result.ok, result.failed, result.holding, result.message = False, transfer, holding, message
@@ -200,7 +202,20 @@ class RobotMover:
             result.done.append(transfer)
         return result
 
-    def _transfer(self, tr: Transfer, observation: BoardObservation):
+    def _pieces_now(self, observation: BoardObservation, done: list[Transfer]) -> list[tuple[np.ndarray, float]]:
+        """(position, foot radius) of every piece as this move left them: the view is older than its first transfer."""
+        calib = observation.calib
+        pieces = [(xy, calib.piece_dims(observation.frame.classes[k])[1])
+                  for k, xy in observation.grasp_positions.items()
+                  if all(np.linalg.norm(xy - t.from_xy) > 0.5 * calib.square for t in done)]
+        return pieces + [(t.to_xy, calib.piece_dims(t.symbol)[1]) for t in done]
+
+    def standoff_mm(self, calib: BoardCalibration) -> float:
+        """The configured standoff, but never so low that a carried piece hits the tallest one (a king is ~95 mm)."""
+        tallest = max(calib.piece_dims(s)[0] for s in PIECE_NAMES)
+        return max(self.config.standoff_mm, (tallest + CARRY_CLEARANCE_M) * 1000.0)
+
+    def _transfer(self, tr: Transfer, observation: BoardObservation, done: list[Transfer]):
         calib = observation.calib
         height = calib.piece_dims(tr.symbol)[0]
         grasp = self.config.grasp_height_fraction[tr.symbol.lower()] * height
@@ -208,17 +223,17 @@ class RobotMover:
         if width > self.jaw.max_open - 0.002:
             return False, False, [], f"{tr.describe()}: {width * 1000:.0f} mm wide, the gripper opens only {self.jaw.max_open * 1000:.0f} mm"
         open_mm = min(width * 1000 + 2 * self.config.finger_clearance_mm, self.jaw.max_open * 1000)
-        others = [(xy, calib.piece_dims(observation.frame.classes[k])[1])
-                  for k, xy in observation.grasp_positions.items() if np.linalg.norm(xy - tr.from_xy) > 0.5 * calib.square]
+        others = [(xy, r) for xy, r in self._pieces_now(observation, done)
+                  if np.linalg.norm(xy - tr.from_xy) > 0.5 * calib.square]
         keep_out = self._keep_out(tr, observation)
+        standoff_mm = self.standoff_mm(calib)
 
         reports = []
         for direction in closing_directions(tr.from_xy, open_mm / 2000.0, others, self.jaw):
             heading = self._heading(direction)
             pose = self.robot.tool_down(*self.mapping.board_to_base_mm(tr.from_xy, tr.from_z + grasp),
                                         closing_axis="x", yaw_deg=heading)
-            picked = self.robot.pick(pose, width * 1000, standoff_mm=self.config.standoff_mm,
-                                     pre_open_mm=open_mm, **keep_out)
+            picked = self.robot.pick(pose, width * 1000, standoff_mm=standoff_mm, pre_open_mm=open_mm, **keep_out)
             reports.append(picked)
             if picked.ok:
                 break
@@ -227,9 +242,12 @@ class RobotMover:
         else:
             return False, False, reports, f"{tr.describe()}: no grasp direction worked"
 
+        # The jaws open again at the target, among other pieces; a piece is round, so the hand may turn on the way.
+        beside = [(xy, r) for xy, r in others if np.linalg.norm(xy - tr.to_xy) > 0.5 * calib.square]
+        heading = self._heading(closing_directions(tr.to_xy, open_mm / 2000.0, beside, self.jaw)[0])
         z = tr.to_z + grasp + self.config.place_air_mm / 1000.0
         pose = self.robot.tool_down(*self.mapping.board_to_base_mm(tr.to_xy, z), closing_axis="x", yaw_deg=heading)
-        placed = self.robot.place(pose, standoff_mm=self.config.standoff_mm, **self._decline())
+        placed = self.robot.place(pose, standoff_mm=standoff_mm, **self._decline())
         reports.append(placed)
         if not placed.ok:
             return False, True, reports, f"{tr.describe()}: placing not finished ({placed.outcome}), the piece may still be in the gripper"

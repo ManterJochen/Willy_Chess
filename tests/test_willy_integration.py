@@ -145,6 +145,44 @@ class CellTreeTest(unittest.TestCase):
         self.assertTrue(tree.app_config.camera.cameras.primary_rig_id)
 
 
+@unittest.skipIf(willy is None, "Workaholic-Willy is not installed")
+class TouchTestRunTest(unittest.TestCase):
+    def test_the_touch_test_reaches_every_square_and_graveyard_slot_on_willys_arm(self):
+        """Every point lifted over and come down to through Willy's move, the graveyard's corners among them."""
+        from contextlib import ExitStack, contextmanager
+        from unittest import mock
+
+        from willy import Robot, load_tree
+
+        from src.game import touch_test
+        from src.game.config import ChessConfig
+        from src.game.play import Cell
+        from src.game.robot_moves import DECLINE, RobotMover
+        from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D
+        from test_game_sim import GameRig
+        from test_mapping_sim import SimDetector, SimPose
+
+        tree = load_tree("console_dummy")
+        robot = Robot.from_tree(tree)
+        rig = GameRig(5)
+        rig.look(35.0, 20.0)
+        mapping = ChessBoardMapping3D(rig, SimDetector(rig), SimPose(rig))
+        mover = RobotMover(robot, mapping, ChessConfig().robot, camera_world=False)
+
+        @contextmanager
+        def dummy_cell(_tree, _config):
+            with ExitStack() as stack:
+                stack.enter_context(robot.connected())
+                yield Cell(robot, mapping, mover, lambda: None, {"decline": DECLINE})
+
+        points = []
+        with mock.patch.object(touch_test, "open_cell", dummy_cell), mock.patch.object(touch_test, "load_cell_tree", lambda _: tree), \
+                mock.patch("builtins.input", lambda text: points.append(text) or ""):
+            self.assertEqual(touch_test.main(["--height-mm", "30"]), 0)
+        self.assertEqual(len(points), len(touch_test.SQUARES) + len(touch_test.GRAVEYARD_SLOTS))
+        self.assertTrue(any("graveyard slot 15" in text for text in points))
+
+
 class WeightsCheckTest(unittest.TestCase):
     def test_a_git_lfs_pointer_is_refused(self):
         import tempfile

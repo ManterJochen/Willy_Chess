@@ -2,7 +2,7 @@
 The game on screen: the digital board, what the camera sees, and what Willy is doing.
 
 Keys: Space = move done, R = calibrate again, G = resign, D = offer a draw, Esc = end,
-W/B = colour, Q/R/B/N = promotion.
+W/B = colour, Q/R/B/N = promotion, F = the board is right (where Willy offers it).
 Clicking two squares enters a move by hand, for when the camera could not recognise it.
 """
 import os
@@ -59,6 +59,9 @@ class PygameView:
 
     def wait(self, state: ViewState, accept: set[str]) -> str:
         self.selected = None
+        # What was pressed while Willy thought or moved answers no question asked now: a stray space bar would open
+        # the gripper before anybody has a hand under it. A closed window stays in the queue.
+        pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP))
         while True:
             for event in pygame.event.get():
                 answer = self._answer(event, state, accept)
@@ -95,6 +98,8 @@ class PygameView:
                 return "resign"
             if event.key == pygame.K_d and "draw" in accept:
                 return "draw"
+            if event.key == pygame.K_f and "force" in accept:
+                return "force"
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and "move" in accept:
             square = self._square_at(event.pos, state.human_color)
             if square is None:

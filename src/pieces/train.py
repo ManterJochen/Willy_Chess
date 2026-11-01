@@ -10,11 +10,13 @@ src/pieces/fetch.py, once per machine:
     python -m src.pieces.train
     python -m src.pieces.train --data data/chess --epochs 80 --image-size 800
     python -m src.pieces.train --smoke      # 2 epochs on 64 images: proves the chain, not a model
+    python -m src.pieces.train --base-model docs/weights/chess_pieces_rtdetr/last --epochs 10 --out docs/weights/chess_pieces_v2
+                                            # continue from trained weights instead of from the COCO base
 """
 import argparse
 from pathlib import Path
 
-from willy import DetectorTraining
+from willy import DetectorPlanOverrides, DetectorTraining
 
 from src.mapping.frame import CLASSES
 
@@ -43,6 +45,8 @@ def parse_args() -> argparse.Namespace:
                         help="Training size in px, a multiple of 32 (default: 640)")
     parser.add_argument("--device", default=None,
                         help='"cuda", "cpu" or "mps" (default: the first one available)')
+    parser.add_argument("--base-model", type=Path, default=None,
+                        help="Start from the weights in this folder (default: the recipe's COCO base)")
     parser.add_argument("--resume", action="store_true",
                         help="Continue from the last epoch in the output folder")
     parser.add_argument("--smoke", action="store_true",
@@ -62,6 +66,7 @@ def main() -> None:
         batch=args.batch,
         image_size=args.image_size,
         classes=CLASSES,          # all 12: a dataset whose names differ is refused, not half trained
+        overrides=DetectorPlanOverrides(base_model=str(args.base_model.resolve())) if args.base_model else None,
         out_dir=out_dir,
         format="yolo",
         device=args.device,

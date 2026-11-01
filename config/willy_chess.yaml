@@ -9,7 +9,7 @@ willy:
 
 detector:
   weights: docs/weights/chess_pieces_rtdetr    # DetectorTraining out_dir (Git LFS)
-  threshold: 0.02                              # score of 0.02 destroys the background but keeps pieces.
+  threshold: 0.5                               # score a piece must clear; steady from 0.3 to 0.5 on the board crop
   segmenter: null                              # SAM2 folder or Hugging Face id; null = Willy's default
 
 game:

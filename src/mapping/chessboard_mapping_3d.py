@@ -22,11 +22,18 @@ from typing import Any, Iterable, Protocol
 import cv2 as cv
 import numpy as np
 
-from src.board.grid import detect_corners, detect_grid, gradient_magnitude, line_energy, to_gray
+from src.board.grid import detect_corners, detect_grid, gradient_magnitude, line_energy, to_gray, transform
 from src.mapping.calibration import CalibrationResult, calibrate_board, measure_grasp_widths
-from src.mapping.frame import CLASS_TO_SYMBOL, BoardFrame, labels_from_masks
+from src.mapping.frame import CLASS_TO_SYMBOL, BoardFrame, labels_from_masks, mask_iou
 from src.mapping.geometry import BoardCalibration, BoardCamera, pose_matrix, solve_pnp, square_centres
 from src.mapping.pieces import assign_squares, piece_positions
+
+# Two masks that agree this much are one piece seen twice: RT-DETR has no NMS and one more "piece" of a colour than
+# stand on the board makes every move impossible. Pieces on neighbouring squares overlap far less.
+DUPLICATE_IOU = 0.7
+# The calibration's crop around the grid, in squares beyond the board edge: the height of the pieces, and a grid window
+# that is still up to 2 squares off (calibration.py decides that).
+GRID_ROI_SQUARES = 2.5
 
 
 class Camera(Protocol):
@@ -218,9 +225,14 @@ class ChessBoardMapping3D:
             CalibrationResult: With the calibration of this view, or the reason it was refused;
                 on refusal an earlier lock stays as it was.
         """
-        frame, camera_to_base, _ = self._grab()
-        frame = self._with_pieces(frame, roi=None)
-        result = calibrate_board(frame, expected)
+        grabbed, camera_to_base, _ = self._grab()
+        # The board crop as in observe: more pixels per piece halve the wrong types (recordings: 2 instead of 4 to 6
+        # per frame), and calibrate_board refuses more than 2. The whole image is the second try for a crop gone wrong.
+        for roi in dict.fromkeys((self._grid_roi(grabbed), None)):
+            frame = self._with_pieces(grabbed, roi=roi)
+            result = calibrate_board(frame, expected)
+            if result.calibration is not None:
+                break
         self.last_calibration = result
         if result.calibration is not None:
             calib = result.calibration
@@ -345,11 +357,15 @@ class ChessBoardMapping3D:
         h, w = frame.bgr.shape[:2]
         x0, y0, x1, y1 = roi if roi is not None else (0, 0, w, h)
         crop = np.ascontiguousarray(frame.bgr[y0:y1, x0:x1])
-        masks, classes, scores = [], {}, {}
-        for obj in self.detector.detect(crop, segment=True, threshold=self.detector_threshold):
+        masks, classes, scores, seen = [], {}, {}, []
+        found = self.detector.detect(crop, segment=True, threshold=self.detector_threshold)
+        for obj in sorted(found, key=lambda o: -float(o.score)):
             symbol = CLASS_TO_SYMBOL.get(obj.label.strip().lower())
             if symbol is None or obj.mask is None or not np.any(obj.mask):
                 continue
+            if any(mask_iou(obj.mask, other) > DUPLICATE_IOU for other in seen):
+                continue
+            seen.append(obj.mask)
             full = np.zeros((h, w), bool)
             full[y0:y1, x0:x1] = obj.mask
             masks.append(full)
@@ -360,6 +376,19 @@ class ChessBoardMapping3D:
         return BoardFrame(frame.bgr, frame.K, frame.depth, labels,
                           {k: s for k, s in classes.items() if k in present},
                           {k: s for k, s in scores.items() if k in present})
+
+    def _grid_roi(self, frame: BoardFrame) -> tuple[int, int, int, int] | None:
+        """The crop for a calibration, when no board pose is known yet: around the grid; None without a grid."""
+        grid = detect_grid(frame.bgr)
+        if grid is None:
+            return None
+        e = 4 + GRID_ROI_SQUARES
+        uv = transform(grid.H_grid_to_image, np.array([[x, y] for x in (-e, e) for y in (-e, e)], float))
+        h, w = frame.bgr.shape[:2]
+        x0, y0 = np.floor(uv.min(axis=0)).astype(int)
+        x1, y1 = np.ceil(uv.max(axis=0)).astype(int)
+        roi = max(int(x0), 0), max(int(y0), 0), min(int(x1), w), min(int(y1), h)
+        return roi if roi[2] > roi[0] and roi[3] > roi[1] else None
 
     def _board_roi(self, frame: BoardFrame, calib: BoardCalibration,
                    extra_squares: float = 0.0) -> tuple[int, int, int, int]:

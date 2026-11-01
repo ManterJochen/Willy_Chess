@@ -124,12 +124,20 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
 
 
 def play_games(cell: Cell, engine: Any, view: Any, config: ChessConfig, recorder: Recorder | None = None) -> ChessGame:
-    """Game after game until the human stops: every game with moves saved as PGN. Returns the last game."""
+    """
+    Game after game until the human stops: every game with moves saved as PGN, a crashed one too.
+
+    Returns:
+        ChessGame: The last game.
+    """
     while True:
         game = ChessGame(cell.mapping, engine, cell.mover, view, config, cell.go_look, recorder)
-        result = game.run()
-        if game.tracker is not None and game.tracker.board.move_stack:
-            print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir)}")
+        result = "*"
+        try:
+            result = game.run()
+        finally:
+            if game.tracker is not None and game.tracker.board.move_stack:
+                print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir)}")
         if result == "*" or not game.ask_new_game():
             return game
 
@@ -148,7 +156,8 @@ def main(argv: list[str] | None = None) -> int:
         print(tree)
         return tree.exit_code
     recorder = Recorder(REPO_ROOT / config.record.out_dir) if config.record.enabled else None
-    with open_cell(tree, config) as cell, Engine(config.engine) as engine, PygameView() as view:
+    # Stockfish first: a missing binary is found before the arm connects and the models load
+    with Engine(config.engine) as engine, open_cell(tree, config) as cell, PygameView() as view:
         play_games(cell, engine, view, config, recorder)
     return 0
 

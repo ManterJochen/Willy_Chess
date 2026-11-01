@@ -40,6 +40,12 @@ class BoardFrame:
     scores: dict[int, float] = field(default_factory=dict)
 
 
+def mask_iou(a: np.ndarray, b: np.ndarray) -> float:
+    """Intersection over union of two boolean masks of the same shape."""
+    union = np.count_nonzero(a | b)
+    return np.count_nonzero(a & b) / union if union else 0.0
+
+
 def labels_from_masks(shape: tuple[int, int], masks: list[np.ndarray]) -> np.ndarray:
     """
     Merge boolean masks into one label image, piece k = masks[k - 1].
