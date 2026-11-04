@@ -11,8 +11,9 @@ about 1.7 squares off. Only the foot touches the board, so:
 - Depth: every mask pixel as a 3D point; each visible surface point lies in front of the
   piece axis, so the axis is estimated from the points plus their distance to the axis.
 - Censored fusion: a foot hidden behind another piece can only push the foot estimate away
-  from the camera, never towards it. If it lies behind the depth estimate by more than tau,
-  the depth estimate wins.
+  from the camera, never towards it. If it lies behind the depth estimate, the depth estimate
+  wins. Otherwise the depth gives the direction from the camera and both together the distance
+  (see fuse).
 """
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -22,7 +23,7 @@ from src.mapping.geometry import BoardCalibration, BoardCamera, square_centres
 
 FOOT_QUANTILE = 0.02        # nearest 2 % of the mask instead of the minimum: one stray pixel moves nothing
 MIN_DEPTH_POINTS = 30       # fewer valid depth points: the foot point alone
-FUSION_TAU = 0.006          # metres
+FUSION_MAX_GAP = 0.025      # metres: further apart than this, one of the two is wrong (a real set: at most ~13 mm)
 OFF_BOARD_MARGIN = 0.75     # squares beyond the board edge before a piece counts as off the board (graveyard: 1.5)
 
 
@@ -78,22 +79,42 @@ def depth_xy(points: np.ndarray, F: np.ndarray, height: float, radius: float,
     return F + np.median(longitudinal + behind) * u + l_hat * v
 
 
-def fuse(x_foot: np.ndarray, x_depth: np.ndarray | None, F: np.ndarray, tau: float = FUSION_TAU) -> np.ndarray:
-    """Censored fusion of the foot point and the depth estimate (see module docstring)."""
+def fuse(x_foot: np.ndarray, x_depth: np.ndarray | None, F: np.ndarray, max_gap: float = FUSION_MAX_GAP,
+         for_grasp: bool = False) -> np.ndarray:
+    """
+    Foot point and depth estimate as one position.
+
+    Measured on a real set (30 pieces, 2026-11-04): sideways the depth repeats to a millimetre between views
+    where the foot point jumps by up to 14 mm with its mask, so the depth gives the direction from the camera.
+    Along that direction their errors have opposite signs (foot -3 mm, depth +3.5 mm and up to +12.6 mm on
+    the far tall pieces), so the distance is their mean: 1 piece of 30 more than 8 mm off, 7 with the depth alone.
+
+    Args:
+        x_foot (np.ndarray): Foot point, (2,).
+        x_depth (np.ndarray | None): Depth estimate, (2,); None with too little depth, then the foot point alone.
+        F (np.ndarray): Camera foot on the board plane, (2,).
+        max_gap (float): Further apart than this they contradict each other: no mean of a wrong value.
+        for_grasp (bool): Which one is believed then: the depth for a grasp, which needs the piece's own surface;
+            the foot point for a square, which must survive a depth that does not fit.
+    """
     if x_depth is None:
         return x_foot
     u = (x_depth - F) / np.linalg.norm(x_depth - F)
-    return x_depth if (x_foot - x_depth) @ u > tau else x_foot
+    behind = (x_foot - x_depth) @ u
+    if behind > 0:                      # at least partly hidden: all a foot can say is that the piece is not nearer
+        return x_depth
+    if np.linalg.norm(x_foot - x_depth) > max_gap:
+        return x_depth if for_grasp else x_foot
+    return x_depth + 0.5 * behind * u
 
 
 def piece_positions(frame: BoardFrame, calib: BoardCalibration, for_grasp: bool = False) -> dict[int, np.ndarray]:
     """
     Position of every detected piece on the board plane.
 
-    Two purposes, two estimators. The square needs half a square of accuracy and must survive a
-    hidden foot or a depth that does not fit: the censored fusion. The grasp needs millimetres: the
-    depth estimate (simulated: median 1.8 mm, 99 % within 4.1 mm, the fusion 4.4 and 13.4 mm), and
-    the fusion only where a piece has too little depth.
+    The square needs half a square of accuracy and must survive a depth that does not fit, the grasp
+    needs millimetres: the same fusion, which only differs in what it believes when foot and depth
+    contradict each other (see fuse).
 
     Args:
         for_grasp (bool): Positions to grip at instead of positions to assign squares with.
@@ -110,7 +131,7 @@ def piece_positions(frame: BoardFrame, calib: BoardCalibration, for_grasp: bool 
         h, r = calib.piece_dims(symbol)
         x_foot = foot_xy(cam, mask, r)
         x_depth = depth_xy(cam.board_points(frame.depth, mask), cam.foot, h, r) if frame.depth is not None else None
-        positions[k] = x_depth if for_grasp and x_depth is not None else fuse(x_foot, x_depth, cam.foot)
+        positions[k] = fuse(x_foot, x_depth, cam.foot, for_grasp=for_grasp)
     return positions
 
 

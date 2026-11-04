@@ -16,7 +16,7 @@ and each needs its own evidence:
 5. Piece set: height and foot radius per type from the depth.
 Fail closed: if any check disagrees, there is no calibration and the reason says why.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
 import chess
 import cv2 as cv
@@ -42,6 +42,8 @@ class CalibrationResult:
         reprojection_px (float): RMS reprojection error of those corners.
         normal_deg (float): Angle between the depth plane normal and the board z axis of the pose.
         class_mismatches (int): Pieces on a start square of their colour but of another type.
+        true_classes (dict[int, str]): Piece label -> FEN symbol its square says in the known position, which
+            overrules the detector: measure from these, not from frame.classes.
     """
     calibration: BoardCalibration | None
     reason: str
@@ -49,11 +51,12 @@ class CalibrationResult:
     reprojection_px: float = float("nan")
     normal_deg: float = float("nan")
     class_mismatches: int = 0
+    true_classes: dict[int, str] = field(default_factory=dict)
 
 
 def calibrate_board(frame: BoardFrame, expected: dict[int, str] | None = None, min_corners: int = 12,
                     max_normal_deg: float = 3.0, slack: int = 3, margin: int = 6,
-                    max_class_mismatches: int = 2) -> CalibrationResult:
+                    max_class_mismatches: int = 6) -> CalibrationResult:
     """
     Calibrate from one view of a known position.
 
@@ -65,7 +68,9 @@ def calibrate_board(frame: BoardFrame, expected: dict[int, str] | None = None, m
         max_normal_deg (float): Largest angle between depth plane and pose.
         slack (int): Pieces whose foot may miss its start square (hidden feet).
         margin (int): Lead of the best labelling over the second best (colour + type matches).
-        max_class_mismatches (int): Pieces the detector may classify wrongly in the final check.
+        max_class_mismatches (int): Pieces the detector may classify wrongly in the final check. Colour, parity
+            and the depth decide the pose; the types only say whether this is the expected position at all, and a
+            real set shows ~2 bishops and knights swapped per view.
 
     Returns:
         CalibrationResult: The calibration, or the reason it was refused.
@@ -118,6 +123,7 @@ def calibrate_board(frame: BoardFrame, expected: dict[int, str] | None = None, m
     calib = BoardCalibration(R, t, float(square), _measure_dims(frame, BoardCamera(frame.K, R, t)))
 
     mismatches = 0
+    truth = {}
     for k, sq in assign(frame, calib).items():
         want = expected.get(sq)
         symbol = frame.classes[k]
@@ -125,10 +131,14 @@ def calibrate_board(frame: BoardFrame, expected: dict[int, str] | None = None, m
             return CalibrationResult(None, f"a {symbol} lands on {chess.square_name(sq)}, where no piece of its "
                                            f"colour is expected", len(idx), rms, normal_deg)
         mismatches += want != symbol
+        truth[k] = want
     if mismatches > max_class_mismatches:
         return CalibrationResult(None, f"{mismatches} pieces stand on a square expected for another type",
                                  len(idx), rms, normal_deg, mismatches)
-    return CalibrationResult(calib, "ok", len(idx), rms, normal_deg, mismatches)
+    # The position is known, so the set is measured by the pieces that stand there: a bishop taken for a knight
+    # would give the knights its height, and with it their grasp height.
+    calib.dims = _measure_dims(replace(frame, classes=truth), BoardCamera(frame.K, R, t))
+    return CalibrationResult(calib, "ok", len(idx), rms, normal_deg, mismatches, truth)
 
 
 def calibrate(frame: BoardFrame) -> BoardCalibration | None:

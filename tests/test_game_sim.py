@@ -200,7 +200,7 @@ class ScriptedHuman:
 
 
 class GameSimTest(unittest.TestCase):
-    def play(self, seed: int, plies: int, recorder=None, human_cls=None, setup=None):
+    def play(self, seed: int, plies: int, human_cls=None, setup=None):
         rig = GameRig(seed)
         config = ChessConfig()
         from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D
@@ -208,7 +208,7 @@ class GameSimTest(unittest.TestCase):
         robot = FakeRobot(rig)
         human = (human_cls or ScriptedHuman)(rig, seed + 100, plies)
         game = ChessGame(mapping, RandomEngine(rig, seed + 200), RobotMover(robot, mapping, config.robot), human,
-                         config, go_look=lambda: rig.look(35.0, 20.0), recorder=recorder)
+                         config, go_look=lambda: rig.look(35.0, 20.0))
         if setup is not None:
             setup(rig, mapping)
         game.run()
@@ -226,23 +226,6 @@ class GameSimTest(unittest.TestCase):
                 # where Willy would grip each piece now, against where it really stands (board frame)
                 err_mm = [np.linalg.norm(game.piece_xy[s] - rig.piece_xy(s)) * 1000 for s in rig.physical]
                 self.assertLess(np.quantile(err_mm, 0.95), 5.0, f"grip positions: {np.round(sorted(err_mm)[-5:], 1)}")
-
-
-    def test_recorded_labels_name_the_tracked_pieces(self):
-        import tempfile
-
-        from src.mapping.frame import CLASSES
-        from src.pieces.record import Recorder
-
-        with tempfile.TemporaryDirectory() as folder:
-            rig, game, _, _ = self.play(1, plies=6, recorder=Recorder(folder))
-            labels = sorted(Path(folder, "labels").glob("*.txt"))
-            self.assertEqual(len(labels), len(list(Path(folder, "images").glob("*.png"))))
-            self.assertGreaterEqual(len(labels), 7)                   # calibration + one view per confirmed move
-            last = [CLASSES[int(line.split()[0])] for line in labels[-1].read_text().splitlines()]
-            want = sorted(SYMBOL_TO_CLASS[s] for s in rig.physical.values())
-            self.assertLessEqual(len(last), len(want))
-            self.assertTrue(set(last) <= set(want))
 
 
     def test_an_illegal_move_is_named_and_can_be_taken_back(self):

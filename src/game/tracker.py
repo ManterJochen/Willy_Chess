@@ -95,6 +95,9 @@ class MoveTracker:
         hidden_ok (float): Cost of an unseen piece that the other masks could hide.
         hidden_bad (float): Cost of an unseen piece that should have been visible.
         hidden_frac (float): Visible fraction of the piece model below which a piece counts as hidden.
+        piece_limit (float): Squares a seen piece may stand off its square. The gate is on the sum over all pieces, and
+            a whole square costs only 1 / (2 sigma^2) = 5.6 of it, so a piece on the wrong square would pass as the
+            nearest legal move as soon as the others stand well. Further off counts like a piece that is not there.
         class_cost (float): Cost of a piece observed with another type than expected (same colour).
             float("inf") forbids it; a finite cost lets the rules overrule a detector mistake.
         promotion_mode (str): See physical_after.
@@ -102,13 +105,14 @@ class MoveTracker:
 
     def __init__(self, calib: BoardCalibration, sigma: float = 0.3, gate: float = 10.0, hidden_ok: float = 1.0,
                  hidden_bad: float = 50.0, hidden_frac: float = 0.15, class_cost: float = 4.0,
-                 promotion_mode: str = "pawn_stays"):
+                 promotion_mode: str = "pawn_stays", piece_limit: float = 0.7):
         if promotion_mode not in PROMOTION_MODES:
             raise ValueError(f"promotion_mode must be one of {PROMOTION_MODES}, not {promotion_mode!r}")
         self.calib = calib
         self.sigma, self.gate = sigma, gate
         self.hidden_ok, self.hidden_bad, self.hidden_frac = hidden_ok, hidden_bad, hidden_frac
         self.class_cost = class_cost
+        self.piece_limit = piece_limit ** 2 / (2 * sigma ** 2)      # as the NLL of one piece
         self.promotion_mode = promotion_mode
         self.centres = square_centres(calib.square)
         self.board = chess.Board()
@@ -241,8 +245,9 @@ class MoveTracker:
                 rows, cols = linear_sum_assignment(cost)
                 if cost[rows, cols].sum() >= _INFEASIBLE:
                     return np.inf, np.inf
-                geo += dist[rows, cols].sum()
-                cls += cost[rows, cols].sum() - dist[rows, cols].sum()
+                matched = dist[rows, cols]
+                geo += matched.sum() + self.hidden_bad * np.count_nonzero(matched > self.piece_limit)
+                cls += cost[rows, cols].sum() - matched.sum()
                 used = {squares[c] for c in cols}
                 if located is not None:
                     located.update({squares[c]: obs[r][2] for r, c in zip(rows, cols)})

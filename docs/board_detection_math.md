@@ -329,20 +329,27 @@ with a rough truncated cone $r(z) = r (1 - 0.45 z/h)$ as the piece model.
 
 ### 5.4 Censored fusion
 
-If a piece in front hides the foot, the lowest visible point is higher up and lands **further back**. So the foot
-point can only be wrong **away from the camera**, never towards it (a one-sided, "censored" measurement). That gives
-a simple rule with $\tau = 6$ mm:
+The two estimates fail differently, so neither one is simply replaced by the other. A foot hidden behind another piece
+can only be wrong **away from the camera**, never towards it (a one-sided, "censored" measurement). So a foot point
+behind the depth estimate says nothing, and the depth estimate stands alone.
+
+Otherwise the depth gives the **direction** from the camera and both give the **distance**. On a real set (30 pieces,
+a board of 45 mm squares) the depth repeats sideways to a millimetre between views, where the foot point jumps by up to
+14 mm with its mask; along the viewing direction their errors have opposite signs (foot -3 mm, depth +3.5 mm and up to
++12.6 mm on the far tall pieces). With $\hat{\mathbf u}$ the unit vector from the camera foot to the depth estimate and
+$b = (\hat{\mathbf x}_\text{foot} - \hat{\mathbf x}_\text{depth})^\top \hat{\mathbf u}$:
 
 ```math
 \hat{\mathbf x} =
 \begin{cases}
-\hat{\mathbf x}_\text{depth} & \text{if } (\hat{\mathbf x}_\text{foot} - \hat{\mathbf x}_\text{depth})^\top \hat{\mathbf u} > \tau,\\
-\hat{\mathbf x}_\text{foot} & \text{otherwise.}
+\hat{\mathbf x}_\text{depth} & \text{if } b > 0,\\
+\hat{\mathbf x}_\text{depth} + \tfrac12\, b\, \hat{\mathbf u} & \text{otherwise.}
 \end{cases}
 ```
 
-For finding the **square** this is plenty. For **grasping** we take the depth estimate directly: in the simulator it
-was off by 1.8 mm in the median (99 % below 4.1 mm), the foot point by 4.4 mm (99 % below 13.4 mm).
+Pieces more than 8 mm off fall from 7 of 30 with the depth alone to 1 of 30. Two estimates more than 25 mm apart
+contradict each other and are not averaged: a square then believes the foot point, which survives a depth that does not
+fit, and a grasp the depth, which comes from the piece's own surface.
 
 ### 5.5 Every piece on exactly one square
 

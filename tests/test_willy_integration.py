@@ -146,6 +146,37 @@ class CellTreeTest(unittest.TestCase):
 
 
 @unittest.skipIf(willy is None, "Workaholic-Willy is not installed")
+class LookPoseTest(unittest.TestCase):
+    LOOKS = ((0.0, -90.0, 90.0, -90.0, -90.0, 0.0), (10.0, -90.0, 90.0, -90.0, -90.0, 0.0))
+
+    def test_every_look_is_accepted_by_willys_arm(self):
+        from willy import Robot, load_tree
+
+        from src.game.play import go_to_look
+        from src.game.robot_moves import DECLINE
+
+        robot = Robot.from_tree(load_tree("console_dummy"))
+        with robot.connected():
+            go_to_look(robot, self.LOOKS, 1, {"decline": DECLINE})
+            go_to_look(robot, self.LOOKS, 0, {"decline": DECLINE})
+            go_to_look(robot, (), 0, {"decline": DECLINE})             # a fixed camera: home
+
+    def test_no_further_than_the_first_stop_it_did_not_reach(self):
+        from src.game.play import go_to_look
+
+        commanded = []
+
+        class Stuck:
+            def move_joints(self, joints, **kw):
+                commanded.append(joints)
+                return type("Report", (), {"ok": False})()
+
+        with self.assertRaises(RuntimeError):
+            go_to_look(Stuck(), self.LOOKS, 1, {})
+        self.assertEqual(len(commanded), 1)
+
+
+@unittest.skipIf(willy is None, "Workaholic-Willy is not installed")
 class TouchTestRunTest(unittest.TestCase):
     def test_the_touch_test_reaches_every_square_and_graveyard_slot_on_willys_arm(self):
         """Every point lifted over and come down to through Willy's move, the graveyard's corners among them."""
@@ -179,8 +210,36 @@ class TouchTestRunTest(unittest.TestCase):
         with mock.patch.object(touch_test, "open_cell", dummy_cell), mock.patch.object(touch_test, "load_cell_tree", lambda _: tree), \
                 mock.patch("builtins.input", lambda text: points.append(text) or ""):
             self.assertEqual(touch_test.main(["--height-mm", "30"]), 0)
-        self.assertEqual(len(points), len(touch_test.SQUARES) + len(touch_test.GRAVEYARD_SLOTS))
-        self.assertTrue(any("graveyard slot 15" in text for text in points))
+            self.assertEqual(len(points), len(touch_test.SQUARES) + len(touch_test.GRAVEYARD_SLOTS))
+            self.assertTrue(any("graveyard slot 15" in text for text in points))
+            points.clear()
+            self.assertEqual(touch_test.main(["--height-mm", "30", "--corners"]), 0)
+            self.assertEqual(len(points),
+                             len(touch_test.SQUARES) + len(touch_test.CORNERS) + len(touch_test.GRAVEYARD_SLOTS))
+            self.assertTrue(any("a8 (take the rook off first)" in text for text in points))
+
+
+@unittest.skipIf(willy is None, "Workaholic-Willy is not installed")
+class ExportedDatasetTest(unittest.TestCase):
+    def test_willys_training_reads_what_the_export_writes(self):
+        """Classes, splits and boxes as DetectorTraining will load them, from two logged games."""
+        import tempfile
+
+        from src.mapping.frame import CLASSES
+        from src.models.detection.closed_set.training.datasets import load_dataset
+        from src.pieces.export import export
+        from test_game_log import played
+
+        with tempfile.TemporaryDirectory() as folder:
+            for seed in (21, 22):
+                played(Path(folder, "logs"), seed, plies=2)
+            report = export(Path(folder, "logs"), Path(folder, "dataset"))
+            dataset = load_dataset(Path(folder, "dataset"), format="yolo", classes=CLASSES)
+        self.assertEqual(tuple(dataset.classes), CLASSES)
+        self.assertEqual(dataset.val_source, "declared")
+        self.assertEqual(len(dataset.train), report["train"])
+        self.assertEqual(len(dataset.val), report["val"])
+        self.assertGreater(sum(len(image.boxes) for image in dataset.train), 20 * report["train"])
 
 
 class WeightsCheckTest(unittest.TestCase):

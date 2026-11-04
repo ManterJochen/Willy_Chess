@@ -18,6 +18,10 @@ game:
   # piece_swapped: the promoted piece physically replaces the pawn (Willy asks you to swap it).
   promotion_mode: pawn_stays    # pawn_stays | piece_swapped
   pgn_dir: data/games           # every finished game is saved there as PGN
+  # How many of Willy's look poses (robot.motion.look_deg, wrist camera only) the game may use: 1 is look_deg[0] alone.
+  # With more, what one view cannot settle (calibration refused, move not confirmed) is looked at from the next pose,
+  # by way of look_deg[0], before anybody is asked. Raise it once `mapping_test --all-looks` is happy with the poses.
+  look_views: 1
 
 engine:
   path: null                    # null: $STOCKFISH_PATH, then stockfish on PATH, then external/chess/...
@@ -46,6 +50,6 @@ robot:
     columns: 2
     table_offset_m: -0.012      # table height relative to the board surface (board thickness)
 
-record:                         # training data from real games, labels from the tracked position
-  enabled: false
-  out_dir: data/recorded        # YOLO layout: images/, labels/, data.yaml
+record:                         # every view and decision of a game; `python -m src.pieces.export` makes a training set
+  enabled: true
+  out_dir: data/game_logs       # one folder per game

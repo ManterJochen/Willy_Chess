@@ -23,18 +23,73 @@ from src.game.config import REPO_ROOT, ChessConfig, load_config
 from src.game.engine import Engine
 from src.game.game import ChessGame
 from src.game.robot_moves import DECLINE, JawGeometry, RobotMover
+from src.mapping.calibration import CalibrationResult
 from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D, WillyCameraPose
-from src.pieces.record import Recorder
+from src.pieces.record import GameLog
 
 
 @dataclass
 class Cell:
-    """The cell as the game uses it: a connected robot, the board mapping, the mover and the look pose."""
+    """
+    The cell as the game uses it: a connected robot, the board mapping, the mover and the look poses.
+
+    Attributes:
+        go_look (Callable[..., None]): Brings the arm to a look pose, go_look(view), by default the first.
+        looks (int): Look poses the cell has (1 for a fixed camera, which does not move to look).
+        views (int): How many of them a game may use (game.look_views).
+    """
     robot: Any
     mapping: ChessBoardMapping3D
     mover: RobotMover
-    go_look: Callable[[], None]
+    go_look: Callable[..., None]
     decline: dict
+    looks: int = 1
+    views: int = 1
+
+    def calibrate(self, expected: dict[int, str] | None = None, attempts: int = 3) -> CalibrationResult:
+        """
+        Calibrate as a game does: a refusal is fail-closed and every grab has new noise, so try again, from the next
+        look pose where there is one.
+
+        Args:
+            expected (dict[int, str] | None): Square -> FEN symbol of the pieces; None is the starting position.
+            attempts (int): The fewest tries; every usable look pose gets one.
+
+        Returns:
+            CalibrationResult: The first calibration that succeeded, or the last refusal.
+        """
+        for attempt in range(max(attempts, self.views)):
+            view = attempt % self.views
+            self.go_look(view) if view else self.go_look()
+            result = self.mapping.calibrate(expected)
+            if result.calibration is not None:
+                break
+            print(f"Calibration attempt {attempt + 1}, look {view}: {result.reason}")
+        return result
+
+
+def look_stops(looks: tuple, view: int) -> tuple:
+    """The joint poses on the way to look pose `view`: any other than the first by way of the first."""
+    return (looks[0], looks[view]) if view else (looks[0],)
+
+
+def go_to_look(robot: Any, looks: tuple, view: int, decline: dict) -> None:
+    """
+    Bring the arm to where the camera sees the board: a wrist camera to that look pose, stop by stop, and no further
+    than the first stop it did not reach; a fixed camera (no looks) to home, out of its view.
+
+    Raises:
+        RuntimeError: The arm did not get there.
+    """
+    from willy import JointPositions
+
+    if not looks:
+        reports = (robot.home(**decline) for _ in range(1))
+    else:
+        reports = (robot.move_joints(JointPositions.deg(*stop), **decline) for stop in look_stops(looks, view))
+    for report in reports:          # one at a time: a generator, the next motion only after this one was reached
+        if not report.ok:
+            raise RuntimeError(f"the arm did not reach the look pose:\n{report}")
 
 
 def load_cell_tree(data_dir: str | Path | None) -> Any:
@@ -88,7 +143,7 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
     The arm plans with a camera world exactly when Willy's CameraWorldPlan says the cell has one; then
     every camera of that world is opened (the primary first, the one the board is mapped with).
     """
-    from willy import Camera, CameraWorldPlan, JointPositions, ObjectDetector, Robot
+    from willy import Camera, CameraWorldPlan, ObjectDetector, Robot
 
     weights = REPO_ROOT / config.detector.weights
     check_weights(weights)
@@ -108,36 +163,41 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
         mapping = ChessBoardMapping3D(cameras[0], detector, camera_pose, detector_threshold=config.detector.threshold,
                                       grasp_height_fraction=config.robot.grasp_height_fraction)
         mover = RobotMover(robot, mapping, config.robot, JawGeometry.from_tree(tree), camera_world)
-        looks = tree.robot.motion.look_deg or ()
+        looks = tuple(tree.robot.motion.look_deg or ()) if camera_pose.on_wrist else ()
 
-        def go_look() -> None:
-            """Wrist camera: to the first look pose. Fixed camera: home, out of its view."""
-            if camera_pose.on_wrist and looks:
-                report = robot.move_joints(JointPositions.deg(*looks[0]), **decline)
-            else:
-                report = robot.home(**decline)
-            if not report.ok:
-                raise RuntimeError(f"the arm did not reach the look pose:\n{report}")
+        def go_look(view: int = 0) -> None:
+            go_to_look(robot, looks, view, decline)
 
         stack.enter_context(robot.connected())
-        yield Cell(robot, mapping, mover, go_look, decline)
+        count = len(looks) or 1
+        yield Cell(robot, mapping, mover, go_look, decline, count, min(config.game.look_views, count))
 
 
-def play_games(cell: Cell, engine: Any, view: Any, config: ChessConfig, recorder: Recorder | None = None) -> ChessGame:
+def play_games(cell: Cell, engine: Any, view: Any, config: ChessConfig, log_root: Path | None = None) -> ChessGame:
     """
     Game after game until the human stops: every game with moves saved as PGN, a crashed one too.
+
+    Args:
+        log_root (Path | None): Where each game keeps its log (src/pieces/record.py); None keeps none.
 
     Returns:
         ChessGame: The last game.
     """
     while True:
-        game = ChessGame(cell.mapping, engine, cell.mover, view, config, cell.go_look, recorder)
+        log = GameLog(log_root) if log_root is not None else None
+        game = ChessGame(cell.mapping, engine, cell.mover, view, config, cell.go_look, log, cell.views)
         result = "*"
         try:
             result = game.run()
+        except BaseException as err:
+            if log is not None:
+                log.event("crash", error=repr(err))
+            raise
         finally:
             if game.tracker is not None and game.tracker.board.move_stack:
                 print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir)}")
+            if log is not None:
+                log.close()
         if result == "*" or not game.ask_new_game():
             return game
 
@@ -155,10 +215,10 @@ def main(argv: list[str] | None = None) -> int:
     if not tree.ok:
         print(tree)
         return tree.exit_code
-    recorder = Recorder(REPO_ROOT / config.record.out_dir) if config.record.enabled else None
+    log_root = REPO_ROOT / config.record.out_dir if config.record.enabled else None
     # Stockfish first: a missing binary is found before the arm connects and the models load
     with Engine(config.engine) as engine, open_cell(tree, config) as cell, PygameView() as view:
-        play_games(cell, engine, view, config, recorder)
+        play_games(cell, engine, view, config, log_root)
     return 0
 
 

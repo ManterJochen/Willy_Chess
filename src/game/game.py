@@ -7,17 +7,17 @@ again and checks that the board shows what it should. Whatever cannot be confirm
 asked for, never guessed: a flagged move, a moved board, a grasp that did not finish.
 """
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Iterator, Protocol
 
 import chess
 import numpy as np
 
 from src.game.config import ChessConfig
 from src.game.robot_moves import PIECE_NAMES, MoveExecution, RobotMover, plan_transfers
-from src.game.tracker import MoveTracker, physical_after
+from src.game.tracker import MoveTracker, TrackResult, physical_after
 from src.mapping.chessboard_mapping_3d import BoardObservation, ChessBoardMapping3D
 from src.mapping.geometry import square_centres
-from src.pieces.record import Recorder
+from src.pieces.record import GameLog
 
 PROMOTION_KEYS = {"q": chess.QUEEN, "r": chess.ROOK, "b": chess.BISHOP, "n": chess.KNIGHT}
 INTRUDER_PX = 300           # a hand or an arm over the board covers thousands of pixels, noise none
@@ -123,13 +123,16 @@ class ChessGame:
         config (ChessConfig): Game settings.
         go_look (Callable[[], Any]): Brings the arm to where the camera sees the board (the look pose
             for a wrist camera, out of the view for a fixed one).
-        recorder (Recorder | None): Saves every confirmed view as training data.
+        log (GameLog | None): Keeps every view and every decision of this game.
+        views (int): Look poses to use: go_look(view) for view 1 and up, where one view cannot settle something.
     """
 
     def __init__(self, mapping: ChessBoardMapping3D, engine: Any, mover: RobotMover, view: View,
-                 config: ChessConfig, go_look: Callable[[], Any], recorder: Recorder | None = None):
+                 config: ChessConfig, go_look: Callable[..., Any], log: GameLog | None = None, views: int = 1):
         self.mapping, self.engine, self.mover, self.view = mapping, engine, mover, view
-        self.config, self.go_look, self.recorder = config, go_look, recorder
+        self.config, self.go_look, self.log, self.views = config, go_look, log, views
+        self._unsettled: list[int] = []     # views of the log whose position only the next committed move will tell
+        self._last_view: int | None = None
         self.human = chess.WHITE if config.game.human_color == "white" else chess.BLACK
         self.tracker: MoveTracker | None = None
         self.graveyard_used = 0
@@ -143,6 +146,8 @@ class ChessGame:
         """Play one game from the starting position. Returns the result ("1-0", "0-1", "1/2-1/2", "*" aborted)."""
         try:
             self.choose_color()
+            self._event("game", human="white" if self.human == chess.WHITE else "black", views=self.views,
+                        promotion_mode=self.config.game.promotion_mode)
             self.calibrate()
             while not self.tracker.board.is_game_over():
                 if self.tracker.board.turn == self.human:
@@ -153,10 +158,12 @@ class ChessGame:
             result, reason = outcome.result(), OUTCOMES.get(outcome.termination, "")
         except GameAborted:
             self._status("Game aborted.")
+            self._log_result("*", "aborted")
             return "*"
         except GameOver as over:
             result, reason = over.result, over.reason
         self._status(f"Game over: {result} ({reason}).")
+        self._log_result(result, reason)
         return result
 
     def ask_new_game(self) -> bool:
@@ -189,9 +196,12 @@ class ChessGame:
         expected = shown if shown is not None else self.tracker.physical if self.tracker is not None else None
         while True:
             self._status("Willy is calibrating the board ...")
-            # a refusal is fail-closed and every grab has new noise, so try a few frames before asking
-            for _ in range(3):
-                result = self._safely("Calibration", lambda: (self.go_look(), self.mapping.calibrate(expected))[1])
+            # a refusal is fail-closed and every grab has new noise, so try a few frames before asking, every look pose
+            attempts = []
+            for attempt in range(max(3, self.views)):
+                view = attempt % self.views
+                result = self._safely("Calibration", lambda: (self._go_look(view), self.mapping.calibrate(expected))[1])
+                attempts.append(self._log_calibration(view, result))
                 if result.calibration is not None:
                     break
             if result.calibration is not None:
@@ -209,10 +219,13 @@ class ChessGame:
                                        class_cost=t.class_cost, promotion_mode=self.config.game.promotion_mode)
         else:
             self.tracker.recalibrated(result.calibration)
+        known = shown if shown is not None else self.tracker.physical
+        if self.log is not None:            # the refused tries showed this position too: the board did not change
+            self.log.settled([number for number in attempts if number is not None], known, "calibration")
         self.piece_xy = {}
-        observation = self._observe()
+        observation = self._observe(moment="calibrated", truth=known, how="calibration")
         if observation is not None:
-            self._remember_positions(observation, changed=set(), record=shown is None)
+            self._remember_positions(observation, changed=set())
         self._sync()
 
     # ------------------------------------------------------------------ turns
@@ -240,12 +253,16 @@ class ChessGame:
                 prompt = f"{answer[5:]} is not a legal move here. Try again."
                 continue
 
-            observation = self._clear_view(self._observe())
+            observation = self._clear_view(self._observe(moment="your_move"), moment="your_move")
             if observation is None:
                 prompt = "The board was moved. Press R to calibrate again."
                 continue
             before = dict(self.tracker.physical)
-            result = self.tracker.step(observation.frame, observation.calib)
+            result = self._step(observation)
+            for other in self._other_views() if result.flagged else ():
+                observation, result = other, self._step(other)
+                if not result.flagged:
+                    break
             self.state.observation = observation
             if result.flagged:
                 self.state.uncertain = self._disagreeing_squares(observation)
@@ -254,10 +271,12 @@ class ChessGame:
                                                              f"Check the board and press space, or click the move.")
                 continue
             if result.move is None:
+                self._settle("no_move")
                 prompt = "I see no move. Press space when you have moved."
                 continue
             if result.move.promotion:     # also with the new piece on the board: one wrong class is another game
                 self._ask_promotion(result.move)
+            self._settle("seen")
             self._remember_positions(observation, self._changed_squares(before))
             self.state.uncertain = set()
             self._sync()
@@ -269,15 +288,18 @@ class ChessGame:
         self._status("Willy is thinking ...")
         move = self._safely("Stockfish", lambda: self.engine.best_move(board))
         san = board.san(move)
+        self._event("engine", move=move.uci(), san=san, fen=board.fen())
 
-        observation = self._clear_view(self._observe())       # nothing but pieces over the board before the arm moves
+        # nothing but pieces over the board before the arm moves; the board shows the tracked position
+        look = {"moment": "before_arm", "truth": self.tracker.physical, "how": "before_arm"}
+        observation = self._clear_view(self._observe(**look), **look)
         while observation is None:
             if self._ask("The board was moved. Press R to calibrate again.", {"recalibrate", "quit"}) == "quit":
                 raise GameAborted
             self.calibrate()
-            observation = self._clear_view(self._observe())
+            observation = self._clear_view(self._observe(**look), **look)
 
-        self._remember_positions(observation, changed=set(), record=False)
+        self._remember_positions(observation, changed=set())
         transfers = plan_transfers(board, self.tracker.physical, move, self.piece_xy, observation.calib.square,
                                    self.graveyard_used, self.config.robot.graveyard)
         self._status(f"Willy plays {san}: " + ", ".join(t.describe() for t in transfers))
@@ -285,6 +307,10 @@ class ChessGame:
             execution = self.mover.execute(transfers, observation)
         except Exception as err:  # noqa: BLE001 (never repeated: a piece may have moved already)
             execution = MoveExecution(ok=False, holding=True, message=f"Willy's move aborted ({err})")
+        self._event("execution", move=move.uci(), ok=execution.ok, holding=execution.holding, message=execution.message,
+                    done=[t.describe() for t in execution.done],
+                    failed=execution.failed.describe() if execution.failed else None,
+                    reports=[str(report) for report in execution.reports])
         # every planned slot, whatever the arm finished: the piece may lie there, by the arm's hand or a person's
         self.graveyard_used += sum(1 for t in transfers if t.to_square is None)
 
@@ -309,13 +335,18 @@ class ChessGame:
         shown = physical_after(self.tracker.board, self.tracker.physical, move, self.config.game.promotion_mode)
         doubts = 0
         while True:
-            observation = self._observe()
+            observation = self._observe(moment="after_arm")
             accept = {"done", "recalibrate", "quit"}
             if observation is not None:
-                ok, nll = self.tracker.verify(observation.frame, move, observation.calib)
+                ok, nll = self._verify(observation, move)
+                for other in self._other_views() if not ok else ():
+                    observation = other
+                    ok, nll = self._verify(other, move)
+                    if ok:
+                        break
                 self.state.observation = observation
                 if ok:
-                    self._commit_own_move(move, observation, record=True)
+                    self._commit_own_move(move, observation, "robot")
                     return
                 doubts += 1
                 prompt = (f"After {san} the board looks different than expected (NLL {nll:.1f}). "
@@ -331,24 +362,56 @@ class ChessGame:
             if answer == "recalibrate":
                 self.calibrate(shown)
             if answer == "force":
-                self._commit_own_move(move, observation, record=False)
+                self._commit_own_move(move, observation, "forced")
                 return
 
-    def _commit_own_move(self, move: chess.Move, observation: BoardObservation, record: bool) -> None:
+    def _commit_own_move(self, move: chess.Move, observation: BoardObservation, how: str) -> None:
         before = dict(self.tracker.physical)
         self.tracker.commit(move)
-        self._remember_positions(observation, self._changed_squares(before), record=record)
+        self._settle(how)
+        self._remember_positions(observation, self._changed_squares(before))
         self.state.uncertain = set()
         self._sync()
 
     # ------------------------------------------------------------------ helpers
-    def _observe(self) -> BoardObservation | None:
-        """Look at the board; None if it moved since the calibration."""
-        observation = self._safely("Looking at the board", lambda: (self.go_look(), self.mapping.observe())[1])
+    def _go_look(self, view: int = 0) -> None:
+        self.go_look(view) if view else self.go_look()
+
+    def _observe(self, view: int = 0, moment: str = "look", truth: dict[int, str] | None = None,
+                 how: str = "") -> BoardObservation | None:
+        """
+        Look at the board from a look pose; None if it moved since the calibration.
+
+        Args:
+            view (int): The look pose.
+            moment (str): For the log: when this view was taken.
+            truth (dict[int, str] | None): The position this view shows, where that is known already; otherwise the
+                next committed move settles it.
+            how (str): For the log: how the truth is known.
+        """
+        observation = self._safely("Looking at the board", lambda: (self._go_look(view), self.mapping.observe())[1])
         self.state.observation = observation
+        if self.log is not None:
+            ply = self.tracker.board.ply() if self.tracker is not None else 0
+            self._last_view = self.log.view(observation.frame, moment=moment, look=view, ply=ply, calib=observation.calib,
+                                            camera_to_base=observation.camera_to_base,
+                                            board_to_base=observation.board_to_base, status=observation.pose_status)
+            if not observation.board_moved:        # a moved board is a pose nobody can vouch for: no label from it
+                if truth is not None:
+                    self.log.settled([self._last_view], truth, how)
+                else:
+                    self._unsettled.append(self._last_view)
         return None if observation.board_moved else observation
 
-    def _clear_view(self, observation: BoardObservation | None) -> BoardObservation | None:
+    def _other_views(self) -> Iterator[BoardObservation]:
+        """The board from the other look poses, one at a time, for what the first view could not settle."""
+        for view in range(1, self.views):
+            self._status("Willy looks again from another side ...")
+            observation = self._observe(view, moment="other_look")
+            if observation is not None:
+                yield observation
+
+    def _clear_view(self, observation: BoardObservation | None, **look: Any) -> BoardObservation | None:
         """
         Wait until nothing but pieces is over the board (a hand, an arm). After the second request the
         space bar goes on anyway: a piece the detector missed looks the same.
@@ -360,7 +423,7 @@ class ChessGame:
             if self._ask(f"Something is over the board, a hand? Please take it away, then press space.{extra}",
                          {"done", "quit"}) == "quit":
                 raise GameAborted
-            observation = self._observe()
+            observation = self._observe(**look)
         return observation
 
     def _safely(self, what: str, action: Callable[[], Any]) -> Any:
@@ -374,15 +437,12 @@ class ChessGame:
                 if self._ask(f"{what} failed: {err}. Space: try again, Esc: end.", {"done", "quit"}) == "quit":
                     raise GameAborted from err
 
-    def _remember_positions(self, observation: BoardObservation, changed: set[int], record: bool = True) -> None:
+    def _remember_positions(self, observation: BoardObservation, changed: set[int]) -> None:
         """
         Update where each piece of the tracked position stands: as seen now if it was matched, else as last
-        seen, else (a piece that just arrived and is hidden) its square centre. A confirmed view also goes
-        to the recorder, labelled with the pieces the tracker knows are there.
+        seen, else (a piece that just arrived and is hidden) its square centre.
         """
         located = self.tracker.locate(observation.frame, observation.calib)
-        if record and self.recorder is not None:
-            self.recorder.save(observation.frame, {k: self.tracker.physical[sq] for sq, k in located.items()})
         seen = {sq: observation.grasp_positions[k] for sq, k in located.items() if k in observation.grasp_positions}
         centres = square_centres(observation.calib.square)
         self.piece_xy = {sq: seen[sq] if sq in seen else
@@ -417,6 +477,7 @@ class ChessGame:
             self.tracker.commit(move)
         for square in self._changed_squares(before):          # last seen there: another piece, or none
             self.piece_xy.pop(square, None)
+        self._settle("clicked")
         self.state.uncertain = set()
         self._sync()
         return True
@@ -438,8 +499,49 @@ class ChessGame:
 
     def _status(self, text: str) -> None:
         self.state.status = text
+        self._event("status", text=text)
         self.view.show(self.state)
 
     def _ask(self, text: str, accept: set[str]) -> str:
         self.state.status = text
-        return self.view.wait(self.state, accept)
+        answer = self.view.wait(self.state, accept)
+        self._event("ask", text=text, accept=sorted(accept), answer=answer)
+        return answer
+
+    # ------------------------------------------------------------------ the log
+    def _event(self, kind: str, **fields: Any) -> None:
+        if self.log is not None:
+            self.log.event(kind, **fields)
+
+    def _settle(self, how: str) -> None:
+        """The views waiting for it showed the position the tracker has now."""
+        if self.log is not None and self._unsettled:
+            self.log.settled(self._unsettled, self.tracker.physical, how)
+        self._unsettled = []
+
+    def _step(self, observation: BoardObservation) -> TrackResult:
+        result = self.tracker.step(observation.frame, observation.calib)
+        self._event("step", view=self._last_view, flagged=result.flagged, nll=result.nll,
+                    move=result.move.uci() if result.move else None, ambiguous=result.promotion_ambiguous)
+        return result
+
+    def _verify(self, observation: BoardObservation, move: chess.Move) -> tuple[bool, float]:
+        ok, nll = self.tracker.verify(observation.frame, move, observation.calib)
+        self._event("verify", view=self._last_view, ok=bool(ok), nll=nll, move=move.uci())
+        return ok, nll
+
+    def _log_calibration(self, look: int, result: Any) -> int | None:
+        """Keep the frame a calibration attempt judged, a refused one above all, and return its number."""
+        if self.log is None or self.mapping.calibration_view is None:
+            return None
+        frame, camera_to_base = self.mapping.calibration_view
+        self._event("calibration", reason=result.reason, corners=result.corners, reprojection_px=result.reprojection_px,
+                    normal_deg=result.normal_deg, class_mismatches=result.class_mismatches)
+        calib = result.calibration
+        board_to_base = None if calib is None else self.mapping.board_to_base
+        return self.log.view(frame, moment="calibration", look=look, calib=calib, camera_to_base=camera_to_base,
+                             board_to_base=board_to_base, status=result.reason)
+
+    def _log_result(self, result: str, reason: str) -> None:
+        moves = [move.uci() for move in self.tracker.board.move_stack] if self.tracker is not None else []
+        self._event("result", result=result, reason=reason, moves=moves)

@@ -31,6 +31,8 @@ class BoardFrame:
         labels (np.ndarray | None): Piece masks, (H, W) int32, 0 = no piece, k = piece k.
         classes (dict[int, str]): Piece k -> FEN symbol ('P' white pawn, 'n' black knight).
         scores (dict[int, float]): Piece k -> detector confidence, if known.
+        roi (tuple[int, int, int, int] | None): The crop x0, y0, x1, y1 the detector saw; None is the whole image.
+        detections (list[dict]): What the detector answered before anything was sorted out: label, score, box in pixels.
     """
     bgr: np.ndarray
     K: np.ndarray
@@ -38,6 +40,8 @@ class BoardFrame:
     labels: np.ndarray | None = None
     classes: dict[int, str] = field(default_factory=dict)
     scores: dict[int, float] = field(default_factory=dict)
+    roi: tuple[int, int, int, int] | None = None
+    detections: list[dict] = field(default_factory=list)
 
 
 def mask_iou(a: np.ndarray, b: np.ndarray) -> float:

@@ -3,10 +3,12 @@
     cd tests
     python -m unittest test_regressions -v
 """
+import io
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -21,23 +23,33 @@ for p in (TESTS, TESTS.parent):
 
 from src.game.config import ChessConfig, RobotConfig, load_config  # noqa: E402
 from src.game.game import ChessGame, GameAborted  # noqa: E402
-from src.game.play import play_games  # noqa: E402
+from src.game import mapping_test  # noqa: E402
+from src.game.play import Cell, look_stops, play_games  # noqa: E402
 from src.game.robot_moves import JawGeometry, RobotMover, Transfer, plan_transfers  # noqa: E402
-from src.game.tracker import MoveTracker  # noqa: E402
+from src.game.tracker import MoveTracker, TrackResult  # noqa: E402
 from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D  # noqa: E402
 from src.mapping.frame import BoardFrame  # noqa: E402
 from src.mapping.geometry import BoardCalibration, square_centres  # noqa: E402
+from src.mapping.pieces import fuse  # noqa: E402
 from test_game_sim import FakeRobot, GameRig, RandomEngine, Report, ScriptedHuman  # noqa: E402
 from test_mapping_sim import SimDetector, SimPose  # noqa: E402
 
-def new_game(seed: int, plies: int, human_cls=ScriptedHuman, robot_cls=FakeRobot, engine=None, config=None):
+LOOKS = ((35.0, 20.0), (35.0, 200.0), (35.0, 110.0))      # tilt, azimuth: the first pose and two from other sides
+
+
+def new_game(seed: int, plies: int, human_cls=ScriptedHuman, robot_cls=FakeRobot, engine=None, config=None, views=1):
     rig = GameRig(seed)
     config = config or ChessConfig()
     mapping = ChessBoardMapping3D(rig, SimDetector(rig), SimPose(rig))
     robot = robot_cls(rig)
     human = human_cls(rig, seed + 100, plies)
+
+    def go_look(view: int = 0) -> None:
+        rig.visited = getattr(rig, "visited", []) + [view]
+        rig.look(*LOOKS[view])
+
     game = ChessGame(mapping, engine or RandomEngine(rig, seed + 200), RobotMover(robot, mapping, config.robot), human,
-                     config, go_look=lambda: rig.look(35.0, 20.0))
+                     config, go_look=go_look, views=views)
     return rig, game, robot, human
 
 
@@ -106,7 +118,7 @@ class DeadEndTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             config = ChessConfig()
             config.game.pgn_dir = folder
-            cell = SimpleNamespace(mapping=game.mapping, mover=game.mover, go_look=game.go_look)
+            cell = SimpleNamespace(mapping=game.mapping, mover=game.mover, go_look=game.go_look, views=1)
             with self.assertRaises(KeyError):
                 play_games(cell, game.engine, human, config)
             games = list(Path(folder).glob("*.pgn"))
@@ -296,6 +308,237 @@ class CalibrationCropTest(unittest.TestCase):
         mapping = mapping_cls(rig, detector, SimPose(rig))
         mapping._grid_roi = lambda frame: (0, 0, 40, 40)               # a corner of the image, no piece in it
         self.assertEqual(mapping.calibrate().reason, "ok")
+
+
+class PositionTest(unittest.TestCase):
+    """Foot point and depth, each wrong in its own way (measured on a real set, see fuse)."""
+    F = np.zeros(2)
+
+    def test_the_depth_gives_the_direction_and_both_the_distance(self):
+        np.testing.assert_allclose(fuse(np.array([0.29, 0.01]), np.array([0.30, 0.0]), self.F), [0.295, 0.0])
+
+    def test_a_foot_behind_the_depth_says_nothing(self):
+        depth = np.array([0.30, 0.0])
+        np.testing.assert_allclose(fuse(np.array([0.302, 0.0]), depth, self.F), depth)
+        np.testing.assert_allclose(fuse(np.array([0.33, 0.01]), depth, self.F), depth)
+
+    def test_without_depth_the_foot_alone(self):
+        foot = np.array([0.29, 0.01])
+        np.testing.assert_allclose(fuse(foot, None, self.F), foot)
+
+    def test_no_mean_of_two_that_contradict_each_other(self):
+        foot, depth = np.array([0.26, 0.0]), np.array([0.30, 0.0])
+        np.testing.assert_allclose(fuse(foot, depth, self.F), foot)
+        np.testing.assert_allclose(fuse(foot, depth, self.F, for_grasp=True), depth)
+
+
+class OneSquareOffTest(unittest.TestCase):
+    """A whole square is less than the gate on the sum: it has to be refused piece by piece."""
+
+    def tracked(self):
+        rig = GameRig(11)
+        rig.look(35.0, 20.0)
+        rig.offsets = {s: np.zeros(2) for s in rig.offsets}            # every other piece in the middle of its square
+        rig.board = rig._render_board()
+        mapping = ChessBoardMapping3D(rig, SimDetector(rig), SimPose(rig))
+        self.assertEqual(mapping.calibrate().reason, "ok")
+        return rig, mapping, MoveTracker(mapping.last_calibration.calibration)
+
+    def on(self, rig, mapping, moved: dict[int, int]):
+        physical = dict(rig.physical)
+        for start, end in moved.items():
+            physical[end] = physical.pop(start)
+        rig.physical = physical
+        rig.board = rig._render_board()
+        rig.offsets = {s: np.zeros(2) for s in physical}
+        return mapping.observe()
+
+    def test_a_knight_beside_the_legal_squares_is_no_legal_move(self):
+        rig, mapping, tracker = self.tracked()
+        observation = self.on(rig, mapping, {chess.G1: chess.G3})      # not f3, not h3
+        result = tracker.step(observation.frame, observation.calib)
+        self.assertTrue(result.flagged, f"taken for {result.move}")
+        self.assertEqual(tracker.board.ply(), 0)
+
+    def test_a_piece_set_down_one_square_off_is_not_confirmed(self):
+        rig, mapping, tracker = self.tracked()
+        observation = self.on(rig, mapping, {chess.E2: chess.E5})
+        ok, _ = tracker.verify(observation.frame, chess.Move.from_uci("e2e4"), observation.calib)
+        self.assertFalse(ok)
+
+    def test_a_piece_well_inside_its_square_is_fine(self):
+        rig, mapping, tracker = self.tracked()
+        rig.offsets = {s: np.zeros(2) for s in rig.physical}
+        rig.offsets[chess.E2] = np.array([0.35, 0.0])
+        observation = mapping.observe()
+        result = tracker.step(observation.frame, observation.calib)
+        self.assertFalse(result.flagged)
+        self.assertIsNone(result.move)
+
+
+class KnownPositionTest(unittest.TestCase):
+    """The calibration knows which piece stands where: a detector that swaps bishops and knights changes nothing."""
+
+    def calibrated(self, swaps: int):
+        rig = GameRig(12)
+        rig.look(35.0, 20.0)
+        detector = SimDetector(rig)
+        real = detector.detect
+        names = {"white bishop": "white knight", "white knight": "white bishop",
+                 "black bishop": "black knight", "black knight": "black bishop"}
+
+        def swapped(crop, *, segment=False, threshold=None):
+            found, left = real(crop, segment=segment, threshold=threshold), swaps
+            for obj in found:
+                if left and obj.label in names:
+                    obj.label, left = names[obj.label], left - 1
+            return found
+
+        detector.detect = swapped
+        return rig, ChessBoardMapping3D(rig, detector, SimPose(rig))
+
+    def test_the_usual_swaps_are_no_refusal(self):
+        _, mapping = self.calibrated(swaps=4)
+        result = mapping.calibrate()
+        self.assertEqual(result.reason, "ok")
+        self.assertEqual(result.class_mismatches, 4)
+
+    def test_the_set_is_measured_by_the_pieces_that_stand_there(self):
+        """Most of them swapped: knights measured as bishops would make the knights the taller ones."""
+        rig, mapping = self.calibrated(swaps=6)
+        self.assertEqual(mapping.calibrate().reason, "ok")
+        self.assertGreater(mapping.dims["b"][0], mapping.dims["n"][0])
+
+    def test_many_wrong_types_are_still_another_position(self):
+        _, mapping = self.calibrated(swaps=8)
+        result = mapping.calibrate()
+        self.assertIsNone(result.calibration)
+        self.assertIn("another type", result.reason)
+
+
+class LookViewsTest(unittest.TestCase):
+    """What one view cannot settle is looked at from the next pose before anybody is asked. Off by default."""
+
+    def test_every_look_but_the_first_goes_by_way_of_the_first(self):
+        looks = ((1,), (2,), (3,))
+        self.assertEqual(look_stops(looks, 0), ((1,),))
+        self.assertEqual(look_stops(looks, 2), ((1,), (3,)))
+
+    def test_one_view_never_leaves_the_first_pose(self):
+        rig, game, _, _ = new_game(1, plies=4)
+        game.run()
+        self.assertEqual(set(rig.visited), {0})
+
+    def test_a_refused_calibration_tries_the_next_pose_not_the_same_again(self):
+        rig, game, _, human = new_game(2, plies=2, views=3)
+        real, calls = game.mapping.calibrate, []
+
+        def twice_refused(expected=None):
+            calls.append(rig.visited[-1])
+            return SimpleNamespace(calibration=None, reason="bad frame") if len(calls) < 3 else real(expected)
+
+        game.mapping.calibrate = twice_refused
+        game.choose_color = lambda: None
+        game.calibrate()
+        self.assertEqual(calls, [0, 1, 2])
+        self.assertFalse(any("refused" in st for st in human.statuses))
+
+    def test_the_cell_calibrates_the_same_way_for_the_test_programs(self):
+        visited = []
+        results = [SimpleNamespace(calibration=None, reason="bad frame"), SimpleNamespace(calibration=1, reason="ok")]
+        cell = Cell(None, SimpleNamespace(calibrate=lambda expected: results.pop(0)), None,
+                    lambda view=0: visited.append(view), {}, looks=2, views=2)
+        self.assertEqual(cell.calibrate().reason, "ok")
+        self.assertEqual(visited, [0, 1])
+
+    def test_a_move_not_recognised_is_looked_at_again_before_the_human_is_asked(self):
+        rig, game, _, human = new_game(3, plies=2, views=2)
+        real, seen = MoveTracker.step, []
+
+        def blind_from_the_first_pose(tracker, frame, calib=None):
+            seen.append(rig.visited[-1])
+            if rig.visited[-1] == 0:
+                return TrackResult(None, 99.0, None, flagged=True)
+            return real(tracker, frame, calib)
+
+        with mock.patch.object(MoveTracker, "step", blind_from_the_first_pose):
+            game.run()
+        self.assertIn(1, seen)
+        self.assertEqual(human.flags, 0, "the human was asked although the second pose saw the move")
+        self.assertGreaterEqual(game.tracker.board.ply(), 1)
+
+    def test_willys_move_is_confirmed_from_the_next_pose_before_anybody_is_asked(self):
+        rig, game, _, human = new_game(4, plies=4, views=2)
+        real = MoveTracker.verify
+
+        def blind_from_the_first_pose(tracker, frame, move, calib=None):
+            return (False, 99.0) if rig.visited[-1] == 0 else real(tracker, frame, move, calib)
+
+        with mock.patch.object(MoveTracker, "verify", blind_from_the_first_pose):
+            game.run()
+        self.assertEqual(human.disagreements, 0)
+        self.assertGreaterEqual(game.tracker.board.ply(), 2)
+
+    def test_a_look_views_of_zero_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "c.yaml"
+            path.write_text("game:\n  look_views: 0\n")
+            with self.assertRaises(ValueError) as refused:
+                load_config(path)
+            self.assertIn("look_views", str(refused.exception))
+
+
+class MappingTestProgramTest(unittest.TestCase):
+    """The program the cell is judged with: a wrong type must not read as a wrong square."""
+
+    def run_program(self, *args, swaps=4):
+        rig = GameRig(13)
+        detector = SimDetector(rig)
+        real = detector.detect
+        names = {"white bishop": "white knight", "white knight": "white bishop"}
+
+        def swapped(crop, *, segment=False, threshold=None):
+            found, left = real(crop, segment=segment, threshold=threshold), swaps
+            for obj in found:
+                if left and obj.label in names:
+                    obj.label, left = names[obj.label], left - 1
+            return found
+
+        detector.detect = swapped
+        mapping = ChessBoardMapping3D(rig, detector, SimPose(rig))
+        visited = []
+
+        def go_look(view=0):
+            visited.append(view)
+            rig.look(*LOOKS[view])
+
+        @contextmanager
+        def sim_cell(_tree, _config):
+            yield Cell(None, mapping, None, go_look, {}, looks=3, views=1)
+
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(mapping_test, "open_cell", sim_cell), \
+                mock.patch.object(mapping_test, "load_cell_tree", lambda _: SimpleNamespace(ok=True)), \
+                redirect_stdout(io.StringIO()) as out:
+            code = mapping_test.main(["--out", folder, *args])
+            files = sorted(p.name for p in Path(folder).iterdir())
+            kept = dict(np.load(Path(folder) / "look1.npz")) if "look1.npz" in files else {}
+        return code, out.getvalue(), files, kept, visited
+
+    def test_a_bishop_seen_as_a_knight_stands_on_the_right_square(self):
+        code, text, _, _, _ = self.run_program("--views", "2")
+        self.assertEqual(code, 0)
+        self.assertIn("right square: 64 of 64", text)
+        self.assertRegex(text, r"right type:\s+56 of 64, (B seen as N|N seen as B) \d+x")
+
+    def test_all_looks_visits_every_pose_and_keeps_what_it_saw(self):
+        code, text, files, kept, visited = self.run_program("--all-looks", "--save", swaps=0)
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(set(visited)), [0, 1, 2])
+        self.assertIn("the board as seen from here against look 0", text)
+        self.assertIn("between the views", text)
+        self.assertIn("free board height", text)
+        self.assertEqual([f for f in files if f.endswith(".npz")], ["look0.npz", "look1.npz", "look2.npz"])
+        self.assertEqual(kept["depth"].shape, kept["labels"].shape)
 
 
 class ConfigTest(unittest.TestCase):

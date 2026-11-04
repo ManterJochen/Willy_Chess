@@ -15,7 +15,7 @@ One class from the camera frame to robot coordinates:
    point in the robot base frame in millimetres, the unit of Willy's poses.
 """
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any, Iterable, Protocol
 
@@ -206,6 +206,7 @@ class ChessBoardMapping3D:
         self.dims: dict[str, tuple[float, float]] | None = None
         self.grasp_widths: dict[str, float] = {}
         self.last_calibration: CalibrationResult | None = None
+        self.calibration_view: tuple[BoardFrame, np.ndarray] | None = None     # the frame it judged, CAMERA -> BASE
         self._undistort: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None   # map1, map2, K_new
 
     # ------------------------------------------------------------------ calibration
@@ -234,11 +235,13 @@ class ChessBoardMapping3D:
             if result.calibration is not None:
                 break
         self.last_calibration = result
+        self.calibration_view = (frame, camera_to_base)
         if result.calibration is not None:
             calib = result.calibration
             self.board_to_base = camera_to_base @ pose_matrix(calib.R, calib.t)
             self.square, self.dims = calib.square, calib.dims
-            self.grasp_widths = measure_grasp_widths(frame, calib, self.grasp_height_fraction)
+            self.grasp_widths = measure_grasp_widths(replace(frame, classes=result.true_classes), calib,
+                                                     self.grasp_height_fraction)
         return result
 
     def grasp_width(self, symbol: str) -> float:
@@ -357,9 +360,12 @@ class ChessBoardMapping3D:
         h, w = frame.bgr.shape[:2]
         x0, y0, x1, y1 = roi if roi is not None else (0, 0, w, h)
         crop = np.ascontiguousarray(frame.bgr[y0:y1, x0:x1])
-        masks, classes, scores, seen = [], {}, {}, []
+        masks, classes, scores, seen, raw = [], {}, {}, [], []
         found = self.detector.detect(crop, segment=True, threshold=self.detector_threshold)
         for obj in sorted(found, key=lambda o: -float(o.score)):
+            box = getattr(obj, "box", None)
+            raw.append({"label": obj.label, "score": float(obj.score),
+                        "box": None if box is None else [box[0] + x0, box[1] + y0, box[2] + x0, box[3] + y0]})
             symbol = CLASS_TO_SYMBOL.get(obj.label.strip().lower())
             if symbol is None or obj.mask is None or not np.any(obj.mask):
                 continue
@@ -375,7 +381,7 @@ class ChessBoardMapping3D:
         present = set(np.unique(labels)) - {0}
         return BoardFrame(frame.bgr, frame.K, frame.depth, labels,
                           {k: s for k, s in classes.items() if k in present},
-                          {k: s for k, s in scores.items() if k in present})
+                          {k: s for k, s in scores.items() if k in present}, (x0, y0, x1, y1), raw)
 
     def _grid_roi(self, frame: BoardFrame) -> tuple[int, int, int, int] | None:
         """The crop for a calibration, when no board pose is known yet: around the grid; None without a grid."""

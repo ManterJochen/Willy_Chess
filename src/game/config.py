@@ -31,6 +31,7 @@ class GameConfig:
     human_color: str = "white"
     promotion_mode: str = "pawn_stays"
     pgn_dir: str = "data/games"
+    look_views: int = 1
 
 
 @dataclass
@@ -67,8 +68,8 @@ class RobotConfig:
 
 @dataclass
 class RecordConfig:
-    enabled: bool = False
-    out_dir: str = "data/recorded"
+    enabled: bool = True
+    out_dir: str = "data/game_logs"
 
 
 @dataclass
@@ -87,6 +88,8 @@ class ChessConfig:
             raise ValueError(f"game.human_color must be white or black, not {self.game.human_color!r}")
         if self.game.promotion_mode not in ("pawn_stays", "piece_swapped"):
             raise ValueError(f"game.promotion_mode must be pawn_stays or piece_swapped, not {self.game.promotion_mode!r}")
+        if self.game.look_views < 1:
+            raise ValueError(f"game.look_views must be at least 1, not {self.game.look_views!r}")
         if self.robot.graveyard.side not in ("+x", "-x", "+y", "-y"):
             raise ValueError(f"robot.graveyard.side must be +x, -x, +y or -y, not {self.robot.graveyard.side!r}")
         missing = set("pnbrqk") - set(self.robot.grasp_height_fraction)

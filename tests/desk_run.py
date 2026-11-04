@@ -107,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--headless", action="store_true", help="no window (the view is still drawn)")
     parser.add_argument("--shot", default=None, help="save the final window to this image")
     parser.add_argument("--pgn-dir", default=None, help="where the PGN goes (default: game.pgn_dir of the config)")
+    parser.add_argument("--log-dir", default=None, help="keep the game log here, as a real game does (default: none)")
     args = parser.parse_args(argv)
     if args.headless:
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -136,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     with robot.connected(), Engine(config.engine) as stockfish, PygameView() as window:
         engine = DeskEngine(stockfish, rig)
         human = WatchedHuman(rig, args.seed + 100, args.plies, window, 0.0 if args.headless else args.pause, engine)
-        game = play_games(cell, engine, human, config)
+        game = play_games(cell, engine, human, config, args.log_dir)
         if args.shot:
             window.save(args.shot)
 
