@@ -34,6 +34,9 @@ DUPLICATE_IOU = 0.7
 # The calibration's crop around the grid, in squares beyond the board edge: the height of the pieces, and a grid window
 # that is still up to 2 squares off (calibration.py decides that).
 GRID_ROI_SQUARES = 2.5
+# A side's beyond/edge ratio (see _window_shifted) may grow this much over its value at calibration before the board
+# counts as moved by one square. Measured at a real cell: 0.2 and 2.8 on the two sides of one axis, board unmoved.
+WINDOW_SHIFT_FACTOR = 2.0
 
 
 class Camera(Protocol):
@@ -205,6 +208,7 @@ class ChessBoardMapping3D:
         self.square: float | None = None
         self.dims: dict[str, tuple[float, float]] | None = None
         self.grasp_widths: dict[str, float] = {}
+        self.window_baseline: dict[tuple[int, int], float] = {}     # beyond/edge per side at calibration
         self.last_calibration: CalibrationResult | None = None
         self.calibration_view: tuple[BoardFrame, np.ndarray] | None = None     # the frame it judged, CAMERA -> BASE
         self._undistort: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None   # map1, map2, K_new
@@ -242,6 +246,7 @@ class ChessBoardMapping3D:
             self.square, self.dims = calib.square, calib.dims
             self.grasp_widths = measure_grasp_widths(replace(frame, classes=result.true_classes), calib,
                                                      self.grasp_height_fraction)
+            self.window_baseline = self._window_ratios(frame, calib, self._board_visible(frame))
         return result
 
     def grasp_width(self, symbol: str) -> float:
@@ -481,22 +486,40 @@ class ChessBoardMapping3D:
         return pieces == 0
 
     @staticmethod
-    def _window_shifted(frame: BoardFrame, calib: BoardCalibration, visible: np.ndarray | None = None) -> bool:
+    def _window_ratios(frame: BoardFrame, calib: BoardCalibration,
+                       visible: np.ndarray | None = None) -> dict[tuple[int, int], float]:
         """
-        A board moved by exactly one square puts every inner corner onto a neighbouring one, so the
-        corners cannot see it; only the board edge breaks the symmetry. For each side compare the line
-        one square beyond the board (+-5) with the opposite board edge (-+4): locked, the edge is a real
-        edge and the line beyond lies in the frame; moved by one square towards that side, it is the
-        other way round. (Simulated: locked at most 0.66, moved at least 2.0.) Samples on pieces are
-        skipped, and a side whose lines are mostly hidden or outside the image is not judged.
+        For each side (axis, sign): the gradient on the line one square beyond the board (+-5) over the
+        one on the opposite board edge (-+4). NaN where a line is mostly hidden or outside the image.
         """
         s = calib.square
         H = frame.K @ np.column_stack((calib.R[:, 0] * s, calib.R[:, 1] * s, calib.t))
         grad = gradient_magnitude(to_gray(frame.bgr))
+        ratios = {}
         for axis in (0, 1):
             for sign in (1, -1):
                 beyond = line_energy(grad, H, axis, 5 * sign, visible)
                 edge = line_energy(grad, H, axis, -4 * sign, visible)
-                if beyond > edge:                                   # False whenever one of them is NaN
-                    return True
+                ratios[(axis, sign)] = beyond / edge if edge > 0 else float("nan")
+        return ratios
+
+    def _window_shifted(self, frame: BoardFrame, calib: BoardCalibration, visible: np.ndarray | None = None) -> bool:
+        """
+        A board moved by exactly one square puts every inner corner onto a neighbouring one, so the
+        corners cannot see it; only the board edge breaks the symmetry. Locked, the edge is a real edge
+        and the line beyond lies in the frame; moved by one square, a side's ratio jumps (simulated:
+        locked at most 0.66, moved at least 2.0).
+
+        A real board is not surrounded by nothing: a printed frame, its edge and a bench of aluminium
+        profiles one square out give a ratio of 2.8 on an unmoved board. So each side is judged against
+        its own ratio at calibration, the same look pose: moved when it grows WINDOW_SHIFT_FACTOR over
+        it, and never below 1. A quiet side still catches a shift in both directions, its line beyond
+        then lands on the board edge or on the squares. Without a baseline, ratio > 1 as before.
+        NaN never counts.
+        """
+        for side, ratio in self._window_ratios(frame, calib, visible).items():
+            base = self.window_baseline.get(side, float("nan"))
+            limit = max(1.0, WINDOW_SHIFT_FACTOR * base) if np.isfinite(base) else 1.0
+            if ratio > limit:
+                return True
         return False
