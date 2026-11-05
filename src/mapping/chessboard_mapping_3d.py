@@ -141,11 +141,13 @@ class BoardObservation:
 
     def intruders(self, min_height: float = 0.015) -> int:
         """
-        Pixels of something above the playing area that is no detected piece: a hand or an arm.
+        Pixels of the largest thing above the playing area that is no detected piece: a hand or an arm.
 
         Counted are depth points higher than min_height over the 8x8 squares and off every piece mask.
-        Sensor noise and flying pixels come as single pixels and are opened away; a hand is a blob.
-        A piece the detector missed counts as well, which errs on the safe side.
+        Sensor noise and flying pixels come as single pixels and are opened away; a hand is one blob.
+        The largest connected blob decides, not their sum: the depth of a piece reaches a few pixels past
+        its colour mask, and at 32 pieces those rims summed up to more than a hand. A piece the detector
+        missed is a blob as well, which errs on the safe side.
         """
         depth = self.frame.depth
         if depth is None:
@@ -157,7 +159,9 @@ class BoardObservation:
         blob = np.zeros(depth.shape, np.uint8)
         blob[ys[above], xs[above]] = 1
         pieces = cv.dilate((self.frame.labels > 0).astype(np.uint8), np.ones((9, 9), np.uint8))
-        return int(cv.morphologyEx(blob & (1 - pieces), cv.MORPH_OPEN, np.ones((5, 5), np.uint8)).sum())
+        opened = cv.morphologyEx(blob & (1 - pieces), cv.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        n, _, stats, _ = cv.connectedComponentsWithStats(opened, connectivity=8)
+        return int(stats[1:, cv.CC_STAT_AREA].max()) if n > 1 else 0
 
     def piece_points(self, label: int) -> np.ndarray:
         """

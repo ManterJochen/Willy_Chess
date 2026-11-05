@@ -417,10 +417,11 @@ class ChessGame:
         space bar goes on anyway: a piece the detector missed looks the same.
         """
         for attempt in range(3):
-            if observation is None or attempt == 2 or observation.intruders() <= INTRUDER_PX:
+            seen = 0 if observation is None else observation.intruders()
+            if observation is None or attempt == 2 or seen <= INTRUDER_PX:
                 return observation
             extra = "" if attempt == 0 else " If there is nothing: space goes on anyway."
-            if self._ask(f"Something is over the board, a hand? Please take it away, then press space.{extra}",
+            if self._ask(f"Something is over the board, a hand? Please take it away, then press space ({seen} px).{extra}",
                          {"done", "quit"}) == "quit":
                 raise GameAborted
             observation = self._observe(**look)
