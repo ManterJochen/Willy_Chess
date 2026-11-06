@@ -220,35 +220,42 @@ def _square_from_depth(frame: BoardFrame, R: np.ndarray, t_sq: np.ndarray) -> tu
     return abs(c0 @ n) / abs(cam.C[2]), angle
 
 
+def grasp_band(height: float) -> float:
+    """Half the height of the band about a piece's grasp height its width is measured in, metres."""
+    return max(0.003, 0.05 * height)
+
+
 def measure_grasp_widths(frame: BoardFrame, calib: BoardCalibration,
-                         fractions: dict[str, float]) -> dict[str, float]:
+                         fractions: dict[str, float]) -> tuple[dict[str, float], dict[str, float]]:
     """
-    Width of each piece type across the jaws at its grasp height, from the depth: the lateral extent
-    (perpendicular to the viewing direction, the side the camera sees in full) of the points in a band
-    around fraction x height, median over the pieces of a type.
+    Width of each piece type across the jaws, from the depth: the lateral extent (perpendicular to the
+    viewing direction, the side the camera sees in full) of its points, median over the pieces of a type.
+    Twice: in a band around fraction x height, where the jaws close, and from that band up, which the open
+    fingers pass on the way down (a knight's head overhangs its neck, a king's collar its neck). Closing to
+    the wider one, the jaws would stop short of the neck and hold nothing.
 
     Returns:
-        dict[str, float]: Lower-case piece symbol -> width in metres, for the types that were measured.
+        tuple[dict[str, float], dict[str, float]]: Lower-case piece symbol -> width in metres at the grasp
+            height, and from it up, for the types that were measured.
     """
     if frame.depth is None:
-        return {}
+        return {}, {}
     cam = BoardCamera(frame.K, calib.R, calib.t)
-    widths = {}
+    at, above = {}, {}
     for k, symbol in frame.classes.items():
         key = symbol.lower()
         h = calib.piece_dims(key)[0]
         z = fractions.get(key, 0.45) * h
+        half = grasp_band(h)
         P = cam.board_points(frame.depth, frame.labels == k)
-        # everything from the grasp height up: the open fingers pass it on the way down (a knight's head
-        # overhangs its collar, a king's collar its neck)
-        band = P[P[:, 2] > z - max(0.003, 0.05 * h)]
-        if len(band) < 15:
-            continue
-        u = np.median(band[:, :2], axis=0) - cam.foot
-        u /= np.linalg.norm(u)
-        lateral = band[:, :2] @ np.array([-u[1], u[0]])
-        widths.setdefault(key, []).append(np.quantile(lateral, 0.98) - np.quantile(lateral, 0.02))
-    return {s: float(np.median(w)) for s, w in widths.items()}
+        for widths, band in ((at, P[np.abs(P[:, 2] - z) < half]), (above, P[P[:, 2] > z - half])):
+            if len(band) < 15:
+                continue
+            u = np.median(band[:, :2], axis=0) - cam.foot
+            u /= np.linalg.norm(u)
+            lateral = band[:, :2] @ np.array([-u[1], u[0]])
+            widths.setdefault(key, []).append(np.quantile(lateral, 0.98) - np.quantile(lateral, 0.02))
+    return {s: float(np.median(w)) for s, w in at.items()}, {s: float(np.median(w)) for s, w in above.items()}
 
 
 def _measure_dims(frame: BoardFrame, cam: BoardCamera) -> dict[str, tuple[float, float]]:

@@ -15,7 +15,7 @@ py -3.11 -m venv .venv
 git clone https://github.com/ManterJochen/Workaholic-Willy.git external/Workaholic-Willy
 pip install -r requirements.txt                       # without a GPU: requirements-cpu.txt
 pip install -e .\external\Workaholic-Willy --no-deps
-python -m src.pieces.fetch                            # RT-DETR base + SAM2, 1.1 GB
+python -m src.pieces.fetch                            # RT-DETR base + SAM2 + MediaPipe hand, 1.1 GB
 git lfs pull                                          # the detector weights
 ```
 
@@ -64,12 +64,15 @@ All in `config/willy_chess.yaml`. Everything not listed can stay as it is.
 | --- | --- |
 | `robot.grasp_height_fraction` | Where the middle of the jaws closes, as a fraction of the measured piece height, per type. The fingertips reach about 10 mm lower, so they must stay above the board |
 | `robot.graveyard.side` | Where captured pieces go: `+x` beyond the h-file, `-x` beyond the a-file, `+y` beyond rank 8, `-y` beyond rank 1 |
+| `robot.graveyard.spacing_squares` | From one graveyard slot to the next, 1.3 squares by default. No camera sees the graveyard, so the slots keep the hand's housing (75 mm wide) clear of a captured queen beside. Check the outer column with `touch_test` against the workspace |
+| `robot.squeeze_mm` | How much narrower than the measured width the jaws close, 4 mm by default. A Robotiq stops on the piece anyway; too little and a piece the depth reads a little wide is held by nothing |
 | `robot.home_before_graveyard` | Back over the board (home) before a captured piece goes out, on by default |
 | `robot.board_surface_mm` | The board surface above the robot base by ruler; `null` (default) takes the camera's. Only while the camera's height is off, see the update notes |
 | `engine.elo`, `engine.think_time_s` | Willy's strength (1320 to 3190, `null` is full strength) and time per move |
 | `game.human_color` | The colour preselected at the start |
 | `game.promotion_mode` | `pawn_stays` (no spare queen, the pawn counts as the new piece) or `piece_swapped` |
 | `game.look_views` | Look poses the game may use, see step 5 |
+| `game.hand_detection` | Before every move of the arm, Willy's palm detector looks for a hand in the whole picture, beside the board too. On by default; it needs `python -m src.pieces.fetch` |
 | `record.enabled` | Keep a log of every game, on by default, see step 7 |
 
 Grasp heights at our cell (Robotiq Hand-E, Staunton set, 45 mm squares): p 0.78, n 0.60, b 0.60, r 0.80, q 0.68, k 0.65. The fingertips reach 10.5 mm below the grasp centre, so it stays at least ~28 mm above the board, clear of the foot; king and queen are held just under the collar, the knight at its neck.
@@ -81,7 +84,7 @@ emergency stop.
 
 | Command | Good result |
 | --- | --- |
-| `python -m src.game.detect_test` | 32 pieces, 16 of each colour. Bishops and knights swapped are fine. Pictures in `data/detect_test/` |
+| `python -m src.game.detect_test` | 32 pieces, 16 of each colour. Bishops and knights swapped are fine. `hands in the picture: 0`, and 1 with a hand held into the view. Pictures in `data/detect_test/` |
 | `python -m src.game.mapping_test` | `right square` all of them. `grasp error`: few or none over 8 mm. `free board height` near 0, a steady rise across the files means the depth is tilted |
 | `python -m src.game.touch_test` | The grasp centre stops over the middle of each square and above the graveyard corners. An offset that is the same everywhere is a calibration error |
 | `python -m src.game.touch_test --corners` | Also goes down to a1, h1, h8 and a8. Take each rook off when it asks |
@@ -137,6 +140,9 @@ is not in Git, it exists only on the machine that trained the weights.
 | `No module named 'willy'`, or the integration tests are skipped | `pip install -e .\external\Workaholic-Willy --no-deps`, also after moving the repository |
 | `no detector weights`, or `is a Git LFS pointer` | `git lfs install`, then `git lfs pull` |
 | `Stockfish not found` | Set `engine.path` |
+| `MediaPipe model file not found` | `python -m src.pieces.fetch`, the hand check needs it |
+| `The arm stopped (protective stop)` | The arm touched something. Look at the gripper, the pieces and the board, clear the stop on the pendant, then press space. Several in a row: check the grasp heights and the hand-eye calibration |
+| `Willy sees a hand in the picture` | Take the hand out of the camera's view. If there is none, the second time space goes on anyway |
 | `CellBusy` | Close the console or whichever program the message names |
 | `only X of 32 pieces stand on an expected square` | Usually one bad frame, the calibration tries again by itself. If it stays: is this the starting position, is the light on the board? |
 | `no board grid found` | Is the whole board in the picture? A view straight along the board's edges finds it less often, turn the look pose a little |

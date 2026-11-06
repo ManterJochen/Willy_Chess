@@ -23,7 +23,7 @@ source .venv/bin/activate            # Windows: .\.venv\Scripts\Activate.ps1
 git clone https://github.com/ManterJochen/Workaholic-Willy.git external/Workaholic-Willy
 pip install -r requirements.txt
 pip install -e .\external\Workaholic-Willy --no-deps
-python -m src.pieces.fetch           # RT-DETR base + SAM2 (1.1 GB)
+python -m src.pieces.fetch           # RT-DETR base + SAM2 + MediaPipe hand (1.1 GB)
 ```
 
 Everything from an empty machine to the first game, step by step: [docs/setup.md](docs/setup.md).
@@ -128,7 +128,8 @@ The math behind every stage, explained step by step: [docs/board_detection_math.
 | `capture` | `WillyCameraPose` in [`chessboard_mapping_3d.py`](src/mapping/chessboard_mapping_3d.py) | each frame with where the camera stood, wrist or fixed, the arm asked to stand still first, the depth the median of a burst |
 | `ObjectDetector.from_weights(...).detect(segment=True)` | [`play.py`](src/game/play.py), `ChessBoardMapping3D` | pieces with SAM2 masks, on the board crop only |
 | `DetectorTraining`, `DetectorPlanOverrides` | [`src/pieces/train.py`](src/pieces/train.py) | training the piece detector |
-| `scripts/model_weights/fetch.py` | [`src/pieces/fetch.py`](src/pieces/fetch.py) | RT-DETR base and SAM2 into Willy's assets, TLS through the OS trust store (truststore) |
+| `scripts/model_weights/fetch.py` | [`src/pieces/fetch.py`](src/pieces/fetch.py) | RT-DETR base, SAM2 and the MediaPipe hand bundle into Willy's assets, TLS through the OS trust store (truststore) |
+| `build_palm_detector(weights_root=...).observe(bgr)` (`src.models.handdetection`) | [`play.py`](src/game/play.py), `ChessBoardMapping3D` | a hand anywhere in the picture stops Willy's move (`game.hand_detection`) |
 | `Robot`: `connected`, `home`, `move_joints`, `move`, `tool_down`, `pick`, `place`, `release` | [`robot_moves.py`](src/game/robot_moves.py), [`play.py`](src/game/play.py), [`touch_test.py`](src/game/touch_test.py) | every motion, gated by Willy's safety |
 | `SegmentationOffer` | `RobotMover` in [`robot_moves.py`](src/game/robot_moves.py) | with a camera world: the piece to grip held out of it, the others as named obstacles |
 

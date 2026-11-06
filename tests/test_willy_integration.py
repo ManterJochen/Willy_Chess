@@ -143,6 +143,7 @@ class CellTreeTest(unittest.TestCase):
         self.assertAlmostEqual(jaw.max_open, tree.robot.gripper.max_width_mm / 1000.0)
         self.assertTrue(hasattr(tree.robot.motion, "look_deg"))
         self.assertTrue(tree.app_config.camera.cameras.primary_rig_id)
+        self.assertTrue(tree.app_config.models.weights_root)                     # the palm detector's bundle
 
 
 @unittest.skipIf(willy is None, "Workaholic-Willy is not installed")

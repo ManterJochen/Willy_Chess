@@ -281,6 +281,37 @@ class GameSimTest(unittest.TestCase):
         self.assertEqual(Reaching.asked, 1)
         self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
 
+    def test_a_hand_beside_the_board_is_waited_for(self):
+        class Reaching(ScriptedHuman):
+            """Reaches beside the board after the first move, where the depth over the squares never looks."""
+            asked = 0
+
+            def wait(self, state, accept):
+                if "sees a hand" in state.status:
+                    Reaching.asked += 1
+                    self.rig.hand_beside = False
+                    return "done"
+                answer = super().wait(state, accept)
+                if answer == "done" and self.rig.logical.ply() == 1 and not Reaching.asked:
+                    self.rig.hand_beside = True
+                return answer
+
+        class PalmDetector:
+            """Willy's palm detector, seeing the hand wherever it is in the picture."""
+
+            def __init__(self, rig):
+                self.rig = rig
+
+            def observe(self, bgr):
+                return [object()] if getattr(self.rig, "hand_beside", False) else []
+
+        def palm_detector(rig, mapping):
+            mapping.hand_detector = PalmDetector(rig)
+
+        rig, game, _, _ = self.play(4, plies=4, human_cls=Reaching, setup=palm_detector)
+        self.assertEqual(Reaching.asked, 1)
+        self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
+
     def test_a_failing_camera_is_reported_and_retried(self):
         def flaky(rig, mapping):
             observe, calls = mapping.observe, []

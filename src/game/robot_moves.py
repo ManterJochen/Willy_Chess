@@ -6,12 +6,13 @@ pick and place to Workaholic-Willy (robot.pick / robot.place), which plans, guar
 the hold; a refusal stops the move with the piece where it is, or still in the hand.
 """
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import chess
 import numpy as np
 
 from src.game.config import GraveyardConfig, RobotConfig
+from src.mapping.calibration import grasp_band
 from src.mapping.chessboard_mapping_3d import BoardObservation, ChessBoardMapping3D
 from src.mapping.geometry import BoardCalibration, square_centres
 
@@ -79,11 +80,12 @@ class Transfer:
 def graveyard_slot(index: int, square: float, config: GraveyardConfig) -> np.ndarray:
     """
     Board-frame position of graveyard slot `index` beside the board: columns of 8 slots parallel to
-    the board edge, the first one `distance_squares` from the edge of the 8x8 squares.
+    the board edge, `spacing_squares` apart either way, the first one `distance_squares` from the edge
+    of the 8x8 squares.
     """
     column, row = divmod(index, 8)
-    out = (4 + config.distance_squares + column) * square
-    along = (row - 3.5) * square
+    out = (4 + config.distance_squares + column * config.spacing_squares) * square
+    along = (row - 3.5) * config.spacing_squares * square
     axis, sign = config.side[1], 1.0 if config.side[0] == "+" else -1.0
     return np.array([sign * out, along]) if axis == "x" else np.array([along, sign * out])
 
@@ -160,13 +162,20 @@ def closing_directions(xy: np.ndarray, open_half_width: float, others: list[tupl
 
 @dataclass
 class MoveExecution:
-    """What the robot did with one move: done, or which transfer stopped and why."""
+    """
+    What the robot did with one move: done, or which transfer stopped and why.
+
+    Attributes:
+        stopped (str): The controller's stop after a failed transfer ("protective stop", ...): the arm met
+            something, and the game must not go on as after a refusal. "" where it stands ready or cannot say.
+    """
     ok: bool
     done: list[Transfer] = field(default_factory=list)
     failed: Transfer | None = None
     holding: bool = False
     reports: list[Any] = field(default_factory=list)
     message: str = ""
+    stopped: str = ""
 
 
 class RobotMover:
@@ -198,9 +207,31 @@ class RobotMover:
             result.reports.extend(reports)
             if not ok:
                 result.ok, result.failed, result.holding, result.message = False, transfer, holding, message
+                result.stopped = self.controller_stop()
                 return result
             result.done.append(transfer)
         return result
+
+    def controller_stop(self) -> str:
+        """
+        The stop the arm's controller is in, "" where it stands ready or cannot say. Asked of the controller
+        itself rather than read from Willy's wording: a pick refused by the guard and a line the controller
+        stopped on contact report the same outcome.
+        """
+        read = getattr(getattr(self.robot, "arm", None), "get_robot_status", None)
+        if not callable(read):
+            return ""
+        try:
+            status = read()
+        except Exception:  # noqa: BLE001 (a status that cannot be read says nothing; the game asks anyway)
+            return ""
+        if status.emergency_stopped:
+            return "emergency stop"
+        if status.protective_stopped:
+            return "protective stop"
+        if not status.controller_ready:
+            return f"safety mode {getattr(status.safety_mode, 'value', status.safety_mode)}"
+        return ""
 
     def _pieces_now(self, observation: BoardObservation, done: list[Transfer]) -> list[tuple[np.ndarray, float]]:
         """(position, foot radius) of every piece as this move left them: the view is older than its first transfer."""
@@ -222,18 +253,33 @@ class RobotMover:
         width = self.mapping.grasp_width(tr.symbol)
         if width > self.jaw.max_open - 0.002:
             return False, False, [], f"{tr.describe()}: {width * 1000:.0f} mm wide, the gripper opens only {self.jaw.max_open * 1000:.0f} mm"
-        open_mm = min(width * 1000 + 2 * self.config.finger_clearance_mm, self.jaw.max_open * 1000)
+        # Open past what overhangs the grasp height (a knight's head, a king's collar), close on the neck below it
+        needed = self._opening_needed(tr, observation, grasp, height)
+
+        def open_mm(d: np.ndarray) -> float:
+            return min(needed(d) * 1000 + 2 * self.config.finger_clearance_mm, self.jaw.max_open * 1000)
+
         others = [(xy, r) for xy, r in self._pieces_now(observation, done)
                   if np.linalg.norm(xy - tr.from_xy) > 0.5 * calib.square]
+        # Ranked by the type's width (Willy's guard judges the fingers where they open, the ranking only chooses);
+        # a direction the open jaws cannot pass this piece in would bring a finger down onto it
+        typical_mm = min(self.mapping.clear_width(tr.symbol) * 1000 + 2 * self.config.finger_clearance_mm,
+                         self.jaw.max_open * 1000)
+        directions = [d for d in closing_directions(tr.from_xy, typical_mm / 2000.0, others, self.jaw)
+                      if needed(d) <= self.jaw.max_open - 0.002]
+        if not directions:
+            return False, False, [], (f"{tr.describe()}: {min(map(needed, _DIRECTIONS)) * 1000:.0f} mm wide above the "
+                                      f"grasp in every direction, the gripper opens only {self.jaw.max_open * 1000:.0f} mm")
         keep_out = self._keep_out(tr, observation)
         standoff_mm = self.standoff_mm(calib)
 
         reports = []
-        for direction in closing_directions(tr.from_xy, open_mm / 2000.0, others, self.jaw):
+        for direction in directions:
             heading = self._heading(direction)
             pose = self.robot.tool_down(*self.mapping.board_to_base_mm(tr.from_xy, tr.from_z + grasp),
                                         closing_axis="x", yaw_deg=heading)
-            picked = self.robot.pick(pose, width * 1000, standoff_mm=standoff_mm, pre_open_mm=open_mm, **keep_out)
+            picked = self.robot.pick(pose, width * 1000, standoff_mm=standoff_mm, squeeze_mm=self.config.squeeze_mm,
+                                     pre_open_mm=open_mm(direction), **keep_out)
             reports.append(picked)
             if picked.ok:
                 break
@@ -249,9 +295,10 @@ class RobotMover:
             if not report.ok:
                 return False, True, reports, f"{tr.describe()}: home before the graveyard refused, the piece is still in the gripper"
 
-        # The jaws open again at the target, among other pieces; a piece is round, so the hand may turn on the way.
+        # The jaws open again at the target, among other pieces, and all the way (Willy's release); a piece is round,
+        # so the hand may turn on the way.
         beside = [(xy, r) for xy, r in others if np.linalg.norm(xy - tr.to_xy) > 0.5 * calib.square]
-        heading = self._heading(closing_directions(tr.to_xy, open_mm / 2000.0, beside, self.jaw)[0])
+        heading = self._heading(closing_directions(tr.to_xy, self.jaw.max_open / 2, beside, self.jaw)[0])
         z = tr.to_z + grasp + self.config.place_air_mm / 1000.0
         pose = self.robot.tool_down(*self.mapping.board_to_base_mm(tr.to_xy, z), closing_axis="x", yaw_deg=heading)
         placed = self.robot.place(pose, standoff_mm=standoff_mm, **self._decline())
@@ -273,6 +320,24 @@ class RobotMover:
         while heading <= -90.0:
             heading += 180.0
         return heading
+
+    def _opening_needed(self, tr: Transfer, observation: BoardObservation, grasp: float,
+                        height: float) -> Callable[[np.ndarray], float]:
+        """
+        How wide the jaws must stand open along a closing direction to pass the piece above its grasp
+        height, metres: at least the width of its type at the calibration, and twice the farthest its
+        depth points reach from the axis the jaws centre on, in the view before this move. A knight turned
+        since the calibration shows its head along another direction, and a head reaches farther forward
+        than back. The quantile keeps a flying pixel from opening the hand.
+        """
+        clear = self.mapping.clear_width(tr.symbol)
+        target = next((k for k, sq in observation.squares.items() if sq == tr.from_square), None)
+        P = observation.piece_points(target) if target is not None else np.empty((0, 3))
+        P = P[P[:, 2] > grasp - grasp_band(height)]
+        if len(P) < 15:
+            return lambda d: clear
+        offsets = P[:, :2] - tr.from_xy
+        return lambda d: max(clear, 2.0 * float(np.quantile(np.abs(offsets @ d), 0.98)))
 
     def _decline(self) -> dict:
         if self.camera_world:

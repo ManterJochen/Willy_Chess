@@ -83,7 +83,7 @@ class GameLog:
 
     def view(self, frame: BoardFrame, *, moment: str, look: int = 0, ply: int = 0, calib: BoardCalibration | None = None,
              camera_to_base: np.ndarray | None = None, board_to_base: np.ndarray | None = None,
-             status: str = "") -> int:
+             status: str = "", hands: int = 0) -> int:
         """
         Keep one view with what the detector made of it.
 
@@ -96,13 +96,14 @@ class GameLog:
             camera_to_base (np.ndarray | None): CAMERA -> BASE, 4x4, metres.
             board_to_base (np.ndarray | None): BOARD -> BASE as seen in this view, 4x4, metres.
             status (str): The pose status of the view.
+            hands (int): Hands the palm detector found in the picture.
 
         Returns:
             int: The number of the view, for what the log says about it later.
         """
         number = self._views
         self._views += 1
-        self.event("view", view=number, moment=moment, look=look, ply=ply, status=status, roi=frame.roi,
+        self.event("view", view=number, moment=moment, look=look, ply=ply, status=status, hands=hands, roi=frame.roi,
                    classes=frame.classes, scores=frame.scores, detections=frame.detections,
                    square=calib.square if calib is not None else None, dims=calib.dims if calib is not None else None)
         arrays = {"K": frame.K, "depth": frame.depth, "labels": frame.labels, "camera_to_base": camera_to_base,

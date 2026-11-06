@@ -122,6 +122,20 @@ def check_weights(folder: Path) -> None:
         raise SystemExit(f"{model} is a Git LFS pointer, not the weights: run `git lfs install && git lfs pull`")
 
 
+def hand_detector(tree: Any) -> Any:
+    """
+    Willy's palm detector, its bundle from the tree's weights folder. Refused with the command that fixes it:
+    a check that silently does not run looks exactly like a cell with nobody in it.
+    """
+    from src.models.handdetection import build_palm_detector  # Willy, imported only when it is used
+
+    try:
+        return build_palm_detector(weights_root=str(tree.app_config.models.weights_root))
+    except (ImportError, FileNotFoundError) as err:
+        raise SystemExit(f"{err}\nThe hand check before every move needs it: `python -m src.pieces.fetch` "
+                         f"(or game.hand_detection: false, at your own risk)") from err
+
+
 def save_pgn(board: chess.Board, result: str, human: bool, folder: Path) -> Path:
     """Write a finished game as PGN, named by its start time."""
     game = chess.pgn.Game.from_board(board)
@@ -163,6 +177,8 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
         mapping = ChessBoardMapping3D(cameras[0], detector, camera_pose, detector_threshold=config.detector.threshold,
                                       grasp_height_fraction=config.robot.grasp_height_fraction)
         mapping.surface_mm = config.robot.board_surface_mm
+        if config.game.hand_detection:
+            mapping.hand_detector = stack.enter_context(hand_detector(tree))
         mover = RobotMover(robot, mapping, config.robot, JawGeometry.from_tree(tree), camera_world)
         looks = tuple(tree.robot.motion.look_deg or ()) if camera_pose.on_wrist else ()
 

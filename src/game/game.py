@@ -306,7 +306,8 @@ class ChessGame:
         try:
             execution = self.mover.execute(transfers, observation)
         except Exception as err:  # noqa: BLE001 (never repeated: a piece may have moved already)
-            execution = MoveExecution(ok=False, holding=True, message=f"Willy's move aborted ({err})")
+            execution = MoveExecution(ok=False, holding=True, message=f"Willy's move aborted ({err})",
+                                      stopped=self.mover.controller_stop())
         self._event("execution", move=move.uci(), ok=execution.ok, holding=execution.holding, message=execution.message,
                     done=[t.describe() for t in execution.done],
                     failed=execution.failed.describe() if execution.failed else None,
@@ -315,6 +316,8 @@ class ChessGame:
         self.graveyard_used += sum(1 for t in transfers if t.to_square is None)
 
         if not execution.ok:
+            if execution.stopped:
+                self._after_a_stop(execution)
             if execution.holding:
                 # never open the hand by itself: the piece would fall onto the board
                 self._ask(f"{execution.message}. If Willy still holds a piece, please put a hand under the gripper; "
@@ -326,6 +329,22 @@ class ChessGame:
             self._ask(f"Please replace the pawn on {chess.square_name(move.to_square)} with the new piece ({name}), "
                       f"then press space.", {"done"})
         self._confirm_own_move(move, san)
+
+    def _after_a_stop(self, execution: MoveExecution) -> None:
+        """
+        The controller stopped the arm: it met something (a piece, the board, a person), which no refusal
+        does. Nothing moves until a person has looked at the cell and the controller stands ready again.
+        """
+        what = execution.failed.describe() if execution.failed else "Willy's move"
+        self._event("stopped", stop=execution.stopped, transfer=what)
+        stop = execution.stopped
+        while stop:
+            answer = self._ask(f"The arm stopped ({stop}) during {what}: it touched something. Check the gripper, the "
+                               f"pieces and the board, clear the stop on the pendant, then press space.",
+                               {"done", "quit"})
+            if answer == "quit":
+                raise GameAborted
+            stop = self.mover.controller_stop()
 
     def _confirm_own_move(self, move: chess.Move, san: str) -> None:
         """
@@ -395,7 +414,8 @@ class ChessGame:
             ply = self.tracker.board.ply() if self.tracker is not None else 0
             self._last_view = self.log.view(observation.frame, moment=moment, look=view, ply=ply, calib=observation.calib,
                                             camera_to_base=observation.camera_to_base,
-                                            board_to_base=observation.board_to_base, status=observation.pose_status)
+                                            board_to_base=observation.board_to_base, status=observation.pose_status,
+                                            hands=observation.hands)
             if not observation.board_moved:        # a moved board is a pose nobody can vouch for: no label from it
                 if truth is not None:
                     self.log.settled([self._last_view], truth, how)
@@ -413,15 +433,19 @@ class ChessGame:
 
     def _clear_view(self, observation: BoardObservation | None, **look: Any) -> BoardObservation | None:
         """
-        Wait until nothing but pieces is over the board (a hand, an arm). After the second request the
-        space bar goes on anyway: a piece the detector missed looks the same.
+        Wait until nothing but pieces is over the board (a hand, an arm, in the depth) and no hand is in
+        the picture (Willy's palm detector, beside the board too). After the second request the space bar
+        goes on anyway: a piece the detector missed looks the same.
         """
         for attempt in range(3):
             seen = 0 if observation is None else observation.intruders()
-            if observation is None or attempt == 2 or seen <= INTRUDER_PX:
+            hands = 0 if observation is None else observation.hands
+            if observation is None or attempt == 2 or (seen <= INTRUDER_PX and not hands):
                 return observation
             extra = "" if attempt == 0 else " If there is nothing: space goes on anyway."
-            if self._ask(f"Something is over the board, a hand? Please take it away, then press space ({seen} px).{extra}",
+            what = ("Willy sees a hand in the picture" if hands
+                    else f"Something is over the board, a hand? ({seen} px)")
+            if self._ask(f"{what}. Please take it away, then press space.{extra}",
                          {"done", "quit"}) == "quit":
                 raise GameAborted
             observation = self._observe(**look)

@@ -3,6 +3,7 @@ Detector test: does the camera see the pieces? No calibration, no robot motion b
 
 The arm goes to its look pose, grabs one view, runs the detector (with segmentation) on the board crop
 and on the whole image, prints what it found per piece type and saves an image with every mask and label.
+It also says how many hands the palm detector sees: none on a free board, one held into the view.
 
     python -m src.game.detect_test [--willy-data DIR] [--threshold 0.3] [--no-move]
 """
@@ -80,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             valid = np.count_nonzero(grabbed.depth) / grabbed.depth.size
             print(f"depth: {valid:.0%} of the pixels valid")
+        if mapping.hand_detector is not None:
+            hands = mapping.hand_detector.observe(grabbed.bgr)
+            print(f"hands in the picture: {len(hands)}" + ("" if hands else " (one held into the view should show 1)"))
 
         roi = mapping._grid_roi(grabbed)
         print(f"board crop: {roi if roi is not None else 'board grid not found, whole image only'}")

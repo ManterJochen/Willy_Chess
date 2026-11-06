@@ -25,8 +25,9 @@ from src.game.config import ChessConfig, RobotConfig, load_config  # noqa: E402
 from src.game.game import ChessGame, GameAborted  # noqa: E402
 from src.game import mapping_test  # noqa: E402
 from src.game.play import Cell, look_stops, play_games  # noqa: E402
-from src.game.robot_moves import JawGeometry, RobotMover, Transfer, plan_transfers  # noqa: E402
+from src.game.robot_moves import JawGeometry, RobotMover, Transfer, graveyard_slot, plan_transfers  # noqa: E402
 from src.game.tracker import MoveTracker, TrackResult  # noqa: E402
+from src.mapping.calibration import measure_grasp_widths  # noqa: E402
 from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D  # noqa: E402
 from src.mapping.frame import BoardFrame  # noqa: E402
 from src.mapping.geometry import BoardCalibration, square_centres  # noqa: E402
@@ -175,6 +176,51 @@ class GraveyardTest(unittest.TestCase):
         game.willy_turn()
         self.assertEqual(game.graveyard_used, 1)
 
+    def test_neighbouring_slots_leave_room_for_the_housing(self):
+        """The Hand-E's housing reaches 37.5 mm to each side, a queen's crown about 15 mm: one square of 45 mm apart,
+        a piece set down beside a captured queen put the housing into it, where no camera sees and nothing refuses."""
+        config = ChessConfig().robot.graveyard
+        slots = [graveyard_slot(i, 0.045, config) for i in range(2 * 8)]
+        nearest = min(np.linalg.norm(a - b) for i, a in enumerate(slots) for b in slots[i + 1:])
+        self.assertGreater(nearest, 0.0375 + 0.015)
+
+
+class StopTest(unittest.TestCase):
+    def test_a_stopped_arm_holds_the_game_until_the_stop_is_cleared(self):
+        """The controller stopped the arm on contact. Told to finish by hand as after a refusal, a person reached in
+        beside an arm that had just met something, and the game moved it again with the same numbers."""
+        rig, game, robot, human = new_game(5, plies=2)
+        game.choose_color = lambda: None
+        game.calibrate()
+        game.human = chess.BLACK
+        move = chess.Move.from_uci("e2e4")
+        game.engine = SimpleNamespace(best_move=lambda board: move, evaluation=lambda board: "", score=lambda *a: 0)
+        reads = [True, True]                    # the stop, still there after the first space, cleared after the second
+
+        def status():
+            stopped = reads.pop(0) if reads else False
+            return SimpleNamespace(protective_stopped=stopped, emergency_stopped=False, controller_ready=not stopped)
+
+        robot.arm = SimpleNamespace(get_robot_status=status)
+        robot.pick = lambda pose, width_mm, **kw: Report(False, "MOTION_REFUSED")
+        asked = []
+
+        def person(state, accept):
+            asked.append(state.status)
+            if "by hand" in state.status:
+                rig.logical.push(move)
+                shown = dict(rig.physical)
+                shown[move.to_square] = shown.pop(move.from_square)
+                rig.set_physical(shown)
+            return "done"
+
+        human.wait = person
+        game.willy_turn()
+        stops = [i for i, text in enumerate(asked) if text.startswith("The arm stopped (protective stop)")]
+        self.assertEqual(len(stops), 2)
+        self.assertLess(stops[-1], next(i for i, text in enumerate(asked) if "by hand" in text))
+        self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
+
 
 class RobotTest(unittest.TestCase):
     def rig(self, physical: dict[int, str]):
@@ -194,14 +240,14 @@ class RobotTest(unittest.TestCase):
                 return SimpleNamespace(xyz=(x, y, z), yaw=yaw_deg)
 
             def pick(self, pose, width_mm, **kw):
-                calls.append(("pick", pose, kw))
+                calls.append(("pick", pose, dict(kw, width_mm=width_mm)))
                 return Report(True)
 
             def place(self, pose, **kw):
                 calls.append(("place", pose, kw))
                 return Report(True)
 
-        mapping = SimpleNamespace(grasp_width=lambda symbol: 0.02,
+        mapping = SimpleNamespace(grasp_width=lambda symbol: 0.02, clear_width=lambda symbol: 0.02,
                                   board_to_base_mm=lambda xy, z=0.0: np.array([xy[0], xy[1], z]) * 1000.0,
                                   board_axis_base=lambda d: np.asarray(d, float))
         return RobotMover(Robot(), mapping, RobotConfig(), JawGeometry()), observation, calls, centres, square
@@ -240,6 +286,32 @@ class RobotTest(unittest.TestCase):
         (_, picked, _), (_, placed, _) = calls
         self.assertGreater(self.along_the_rank(picked), 0.8)
         self.assertLess(self.along_the_rank(placed), 0.8)
+
+    def test_the_jaws_open_past_a_knights_head_and_close_on_its_neck(self):
+        """Closed to the head's width the jaws stop short of the neck and hold nothing; opened to the neck's, the
+        fingers come down onto the head."""
+        mover, observation, calls, centres, _ = self.rig({chess.G1: "N"})
+        mover.mapping.clear_width = lambda symbol: 0.03
+        transfer = Transfer("N", centres[chess.G1], centres[chess.F3], from_square=chess.G1, to_square=chess.F3)
+        self.assertTrue(mover.execute([transfer], observation).ok)
+        (_, _, picked), _ = calls
+        self.assertAlmostEqual(picked["width_mm"], 20.0)
+        self.assertAlmostEqual(picked["pre_open_mm"], 30.0 + 2 * mover.config.finger_clearance_mm)
+
+    def test_a_knight_turned_since_the_calibration_is_not_gripped_across_its_head(self):
+        """Measured once at the calibration, the knights' width said nothing of a head that now reaches 26 mm forward
+        along the rank: jaws closing along the rank came down onto it (a protective stop, 2026-11-05)."""
+        mover, observation, calls, centres, _ = self.rig({chess.G1: "N"})
+        height = observation.calib.piece_dims("n")[0]
+        angles = np.linspace(0, 2 * np.pi, 72, endpoint=False)
+        neck = np.column_stack((0.007 * np.cos(angles), 0.007 * np.sin(angles), np.full(72, 0.5 * height)))
+        head = np.column_stack((np.linspace(-0.008, 0.026, 72), np.zeros(72), np.full(72, 0.9 * height)))
+        points = np.vstack((neck, head)) + np.r_[centres[chess.G1], 0.0]
+        observation.squares, observation.piece_points = {1: chess.G1}, lambda label: points
+        transfer = Transfer("N", centres[chess.G1], centres[chess.F3], from_square=chess.G1, to_square=chess.F3)
+        self.assertTrue(mover.execute([transfer], observation).ok)
+        (_, picked, _), _ = calls
+        self.assertLess(self.along_the_rank(picked), 0.8)
 
 
 class DuplicateTest(unittest.TestCase):
@@ -308,6 +380,23 @@ class CalibrationCropTest(unittest.TestCase):
         mapping = mapping_cls(rig, detector, SimPose(rig))
         mapping._grid_roi = lambda frame: (0, 0, 40, 40)               # a corner of the image, no piece in it
         self.assertEqual(mapping.calibrate().reason, "ok")
+
+
+class GraspWidthTest(unittest.TestCase):
+    def test_the_jaws_close_on_a_knights_neck_and_open_past_its_head(self):
+        """Its head overhangs the neck: with one width from the grasp height up the jaws closed on nothing."""
+        angles = np.linspace(0, 2 * np.pi, 72, endpoint=False)
+        rings = [np.column_stack(((0.007 if z < 0.04 else 0.015) * np.cos(angles),
+                                  (0.007 if z < 0.04 else 0.008) * np.sin(angles), np.full(len(angles), z)))
+                 for z in np.linspace(0.0, 0.06, 61)]
+        camera = SimpleNamespace(board_points=lambda depth, mask: np.vstack(rings), foot=np.array([0.0, -0.5]))
+        frame = BoardFrame(np.zeros((4, 4, 3), np.uint8), np.eye(3), np.ones((4, 4), np.float32),
+                           np.ones((4, 4), np.int32), {1: "N"})
+        calib = BoardCalibration(np.eye(3), np.zeros(3), 0.045, {"n": (0.06, 0.016)})
+        with mock.patch("src.mapping.calibration.BoardCamera", return_value=camera):
+            at, above = measure_grasp_widths(frame, calib, {"n": 0.6})
+        self.assertAlmostEqual(at["n"], 0.014, delta=0.001)
+        self.assertAlmostEqual(above["n"], 0.030, delta=0.001)
 
 
 class PositionTest(unittest.TestCase):

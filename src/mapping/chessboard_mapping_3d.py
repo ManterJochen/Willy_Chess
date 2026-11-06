@@ -118,6 +118,7 @@ class BoardObservation:
             (too few corners visible, the lock alone) or "moved" (the board is not where it was
             locked: calibrate again before trusting any square).
         captured_at_s (float): Host time of the grab (time.time() clock).
+        hands (int): Hands Willy's palm detector found anywhere in the picture; 0 without a detector.
     """
     frame: BoardFrame
     calib: BoardCalibration
@@ -130,6 +131,7 @@ class BoardObservation:
     corner_residual_px: float
     pose_status: str
     captured_at_s: float = 0.0
+    hands: int = 0
 
     @property
     def board_moved(self) -> bool:
@@ -212,8 +214,10 @@ class ChessBoardMapping3D:
         self.square: float | None = None
         self.dims: dict[str, tuple[float, float]] | None = None
         self.grasp_widths: dict[str, float] = {}
+        self.clear_widths: dict[str, float] = {}       # from the grasp height up: what the open fingers pass
         self.window_baseline: dict[tuple[int, int], float] = {}     # beyond/edge per side at calibration
         self.surface_mm: float | None = None    # robot.board_surface_mm: the board surface in BASE, by hand
+        self.hand_detector: Any = None          # Willy's PalmDetector (game.hand_detection): observe(bgr) -> hands
         self.last_calibration: CalibrationResult | None = None
         self.calibration_view: tuple[BoardFrame, np.ndarray] | None = None     # the frame it judged, CAMERA -> BASE
         self._undistort: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None   # map1, map2, K_new
@@ -249,8 +253,8 @@ class ChessBoardMapping3D:
             calib = result.calibration
             self.board_to_base = camera_to_base @ pose_matrix(calib.R, calib.t)
             self.square, self.dims = calib.square, calib.dims
-            self.grasp_widths = measure_grasp_widths(replace(frame, classes=result.true_classes), calib,
-                                                     self.grasp_height_fraction)
+            self.grasp_widths, self.clear_widths = measure_grasp_widths(replace(frame, classes=result.true_classes),
+                                                                        calib, self.grasp_height_fraction)
             self.window_baseline = self._window_ratios(frame, calib, self._board_visible(frame))
         return result
 
@@ -260,6 +264,10 @@ class ChessBoardMapping3D:
         if key in self.grasp_widths:
             return self.grasp_widths[key]
         return 1.6 * BoardCalibration(np.eye(3), np.zeros(3), self.square, self.dims).piece_dims(key)[1]
+
+    def clear_width(self, symbol: str) -> float:
+        """Width of a piece from its grasp height up, metres: what the open fingers pass on the way down."""
+        return max(self.grasp_width(symbol), self.clear_widths.get(symbol.lower(), 0.0))
 
     def unlock(self) -> None:
         """Forget the board pose, e.g. after the board was moved on purpose."""
@@ -287,9 +295,10 @@ class ChessBoardMapping3D:
             # and a board nudged by a few millimetres is picked where it now stands.
             self.board_to_base = board_to_base
         positions = piece_positions(frame, calib)
+        hands = 0 if self.hand_detector is None else len(self.hand_detector.observe(frame.bgr))
         return BoardObservation(frame, calib, camera_to_base, board_to_base, positions,
                                 piece_positions(frame, calib, for_grasp=True), assign_squares(positions, calib.square),
-                                used, residual, status, captured_at_s)
+                                used, residual, status, captured_at_s, hands)
 
     def view_calibration(self, camera_to_base: np.ndarray, K: np.ndarray | None = None) -> BoardCalibration:
         """The locked board seen from a camera pose: R, t of BOARD -> CAMERA, the square and the piece set."""

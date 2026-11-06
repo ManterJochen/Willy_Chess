@@ -32,6 +32,9 @@ class GameConfig:
     promotion_mode: str = "pawn_stays"
     pgn_dir: str = "data/games"
     look_views: int = 1
+    # Before the arm moves, Willy's MediaPipe palm detector looks for a hand in the whole picture, not only
+    # over the 8x8 squares where the depth looks; it needs the bundle `python -m src.pieces.fetch` downloads
+    hand_detection: bool = True
 
 
 @dataclass
@@ -54,6 +57,9 @@ class GraveyardConfig:
     distance_squares: float = 1.5
     columns: int = 2
     table_offset_m: float = -0.012
+    # From one slot to the next, in squares. The Hand-E's housing reaches 37.5 mm to each side 36.5 mm above the
+    # grasp: one square (45 mm) puts it into a queen set down beside, where no camera sees and nothing refuses
+    spacing_squares: float = 1.3
 
 
 @dataclass
@@ -61,6 +67,9 @@ class RobotConfig:
     standoff_mm: float = 80.0
     finger_clearance_mm: float = 8.0
     place_air_mm: float = 2.0
+    # The jaws close this much narrower than the measured width. A Robotiq stops on the piece at its force anyway;
+    # Willy's 1 mm let them close on nothing where the depth read a knight's neck a little wide (2026-11-05)
+    squeeze_mm: float = 4.0
     # Back home (over the board) before a captured piece goes out to the graveyard: a clean start for the long reach
     home_before_graveyard: bool = True
     # The board surface above the robot base, millimetres, measured by hand; None takes it from the camera. Only
@@ -98,6 +107,8 @@ class ChessConfig:
             raise ValueError(f"game.look_views must be at least 1, not {self.game.look_views!r}")
         if self.robot.graveyard.side not in ("+x", "-x", "+y", "-y"):
             raise ValueError(f"robot.graveyard.side must be +x, -x, +y or -y, not {self.robot.graveyard.side!r}")
+        if self.robot.graveyard.spacing_squares < 1.0:
+            raise ValueError(f"robot.graveyard.spacing_squares must be at least 1, not {self.robot.graveyard.spacing_squares!r}")
         missing = set("pnbrqk") - set(self.robot.grasp_height_fraction)
         if missing:
             raise ValueError(f"robot.grasp_height_fraction misses {', '.join(sorted(missing))}")
