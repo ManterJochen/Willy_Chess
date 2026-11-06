@@ -64,13 +64,15 @@ All in `config/willy_chess.yaml`. Everything not listed can stay as it is.
 | --- | --- |
 | `robot.grasp_height_fraction` | Where the middle of the jaws closes, as a fraction of the measured piece height, per type. The fingertips reach about 10 mm lower, so they must stay above the board |
 | `robot.graveyard.side` | Where captured pieces go: `+x` beyond the h-file, `-x` beyond the a-file, `+y` beyond rank 8, `-y` beyond rank 1 |
+| `robot.home_before_graveyard` | Back over the board (home) before a captured piece goes out, on by default |
+| `robot.board_surface_mm` | The board surface above the robot base by ruler; `null` (default) takes the camera's. Only while the camera's height is off, see the update notes |
 | `engine.elo`, `engine.think_time_s` | Willy's strength (1320 to 3190, `null` is full strength) and time per move |
 | `game.human_color` | The colour preselected at the start |
 | `game.promotion_mode` | `pawn_stays` (no spare queen, the pawn counts as the new piece) or `piece_swapped` |
 | `game.look_views` | Look poses the game may use, see step 5 |
 | `record.enabled` | Keep a log of every game, on by default, see step 7 |
 
-Start values for the grasp height at our cell, still being tested: p 0.45, n 0.30, b 0.40, r 0.50, q 0.42, k 0.42.
+Grasp heights at our cell (Robotiq Hand-E, Staunton set, 45 mm squares): p 0.78, n 0.60, b 0.60, r 0.80, q 0.68, k 0.65. The fingertips reach 10.5 mm below the grasp centre, so it stays at least ~28 mm above the board, clear of the foot; king and queen are held just under the collar, the knight at its neck.
 
 ## 5. Check the cell
 

@@ -49,6 +49,9 @@ class DeskRobot:
         report = self.robot.place(pose[0], **kw)
         return self.hands.place(pose[1]) if report.ok else report
 
+    def home(self, **kw):
+        return self.robot.home(**kw)
+
     def release(self):
         return self.robot.release()
 

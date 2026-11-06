@@ -239,7 +239,9 @@ def measure_grasp_widths(frame: BoardFrame, calib: BoardCalibration,
         h = calib.piece_dims(key)[0]
         z = fractions.get(key, 0.45) * h
         P = cam.board_points(frame.depth, frame.labels == k)
-        band = P[np.abs(P[:, 2] - z) < max(0.003, 0.05 * h)]
+        # everything from the grasp height up: the open fingers pass it on the way down (a knight's head
+        # overhangs its collar, a king's collar its neck)
+        band = P[P[:, 2] > z - max(0.003, 0.05 * h)]
         if len(band) < 15:
             continue
         u = np.median(band[:, :2], axis=0) - cam.foot

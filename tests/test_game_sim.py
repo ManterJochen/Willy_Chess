@@ -122,6 +122,9 @@ class FakeRobot:
         self.rig.set_physical(physical)
         return Report(True)
 
+    def home(self, **kw):
+        return Report(True)          # over the board, the piece stays in the hand
+
     def place(self, pose, **kw):
         xy = self._board_xy(pose)
         s = self.rig.square

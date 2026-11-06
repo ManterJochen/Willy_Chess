@@ -242,6 +242,13 @@ class RobotMover:
         else:
             return False, False, reports, f"{tr.describe()}: no grasp direction worked"
 
+        if tr.to_square is None and self.config.home_before_graveyard:
+            # Over the board first, the piece in the hand: a clean start for the long reach out to the graveyard
+            report = self.robot.home(**self._decline())
+            reports.append(report)
+            if not report.ok:
+                return False, True, reports, f"{tr.describe()}: home before the graveyard refused, the piece is still in the gripper"
+
         # The jaws open again at the target, among other pieces; a piece is round, so the hand may turn on the way.
         beside = [(xy, r) for xy, r in others if np.linalg.norm(xy - tr.to_xy) > 0.5 * calib.square]
         heading = self._heading(closing_directions(tr.to_xy, open_mm / 2000.0, beside, self.jaw)[0])

@@ -162,6 +162,7 @@ def open_cell(tree: Any, config: ChessConfig) -> Iterator[Cell]:
         camera_pose = WillyCameraPose(cameras[0], robot)
         mapping = ChessBoardMapping3D(cameras[0], detector, camera_pose, detector_threshold=config.detector.threshold,
                                       grasp_height_fraction=config.robot.grasp_height_fraction)
+        mapping.surface_mm = config.robot.board_surface_mm
         mover = RobotMover(robot, mapping, config.robot, JawGeometry.from_tree(tree), camera_world)
         looks = tuple(tree.robot.motion.look_deg or ()) if camera_pose.on_wrist else ()
 

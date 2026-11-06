@@ -20,7 +20,7 @@ from src.mapping.geometry import square_centres
 from src.pieces.record import GameLog
 
 PROMOTION_KEYS = {"q": chess.QUEEN, "r": chess.ROOK, "b": chess.BISHOP, "n": chess.KNIGHT}
-INTRUDER_PX = 300           # a hand or an arm over the board covers thousands of pixels, noise none
+INTRUDER_PX = 800           # a hand or an arm over the board covers thousands of pixels, noise none
 DRAW_ACCEPT_CP = 50         # Willy accepts a draw unless it stands better than half a pawn
 OUTCOMES = {chess.Termination.CHECKMATE: "checkmate", chess.Termination.STALEMATE: "stalemate",
             chess.Termination.INSUFFICIENT_MATERIAL: "insufficient material",

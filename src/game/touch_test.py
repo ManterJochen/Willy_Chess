@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import chess
+import numpy as np
 
 from src.game.config import load_config
 from src.game.play import load_cell_tree, open_cell
@@ -61,10 +62,23 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"Calibrated: square {cell.mapping.square * 1000:.1f} mm, {result.corners} corners, "
               f"reprojection {result.reprojection_px:.2f} px")
+        # where the board lies in BASE, on its surface: for the chessboard fixture in robot.yaml, and to compare
+        # the camera's heights with a ruler (the same z everywhere on a level board)
+        s = cell.mapping.square
+        for name, xy in (("centre", (0, 0)), ("a1 corner", (-4, -4)), ("h8 corner", (4, 4))):
+            x, y, z = cell.mapping.board_to_base_mm(np.array(xy, float) * s, 0.0)
+            print(f"board {name}: ({x:.1f}, {y:.1f}, {z:.1f}) mm in BASE")
         # over the tallest piece: the same height a carried piece flies at in the game
         above = cell.mover.standoff_mm(result.calibration)
+        homed = False
         for name, (x, y, z) in touch_points(cell.mapping, config.robot.graveyard, args.height_mm / 1000.0, args.corners):
             input(f"Enter: {args.height_mm:.0f} mm above {name} ({x:.1f}, {y:.1f}, {z:.1f} mm) ")
+            if name.startswith("graveyard") and not homed and config.robot.home_before_graveyard:
+                report = cell.robot.home(**cell.decline)     # as the game does before a capture goes out
+                if not report.ok:
+                    print(report)
+                    return 1
+                homed = True
             for height in (z + above, z):
                 report = cell.robot.move(cell.robot.tool_down(x, y, height), **cell.decline)
                 if not report.ok:

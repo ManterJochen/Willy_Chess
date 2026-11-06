@@ -213,6 +213,7 @@ class ChessBoardMapping3D:
         self.dims: dict[str, tuple[float, float]] | None = None
         self.grasp_widths: dict[str, float] = {}
         self.window_baseline: dict[tuple[int, int], float] = {}     # beyond/edge per side at calibration
+        self.surface_mm: float | None = None    # robot.board_surface_mm: the board surface in BASE, by hand
         self.last_calibration: CalibrationResult | None = None
         self.calibration_view: tuple[BoardFrame, np.ndarray] | None = None     # the frame it judged, CAMERA -> BASE
         self._undistort: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None   # map1, map2, K_new
@@ -310,6 +311,8 @@ class ChessBoardMapping3D:
         xy = np.atleast_2d(np.asarray(xy, np.float64))
         X = np.column_stack((xy, np.full(len(xy), z), np.ones(len(xy))))
         out = (X @ self.board_to_base.T)[:, :3] * 1000.0
+        if self.surface_mm is not None:
+            out[:, 2] = self.surface_mm + z * 1000.0
         return out[0] if out.shape[0] == 1 else out
 
     def board_points_to_base_mm(self, P: np.ndarray) -> np.ndarray:

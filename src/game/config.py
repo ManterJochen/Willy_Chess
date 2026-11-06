@@ -61,6 +61,12 @@ class RobotConfig:
     standoff_mm: float = 80.0
     finger_clearance_mm: float = 8.0
     place_air_mm: float = 2.0
+    # Back home (over the board) before a captured piece goes out to the graveyard: a clean start for the long reach
+    home_before_graveyard: bool = True
+    # The board surface above the robot base, millimetres, measured by hand; None takes it from the camera. Only
+    # where the camera's height is known to be off: Willy's camera world keeps its own reading, and a finger sent
+    # to the true height meets the board where that reading lies higher (a hand-eye calibration is the real fix).
+    board_surface_mm: float | None = None
     grasp_height_fraction: dict[str, float] = field(
         default_factory=lambda: {s: 0.45 for s in "pnbrqk"})
     graveyard: GraveyardConfig = field(default_factory=GraveyardConfig)
