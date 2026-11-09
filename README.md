@@ -48,8 +48,11 @@ Everything from an empty machine to the first game, step by step: [docs/setup.md
    accepts unless it stands better). Q / R / B / N: the promotion piece. Click two squares: enter a move by
    hand. F: the board is right, play on (offered when the camera keeps disagreeing with Willy's move). Esc: end.
 
-Every game is saved as PGN in `data/games/`, a crashed one too. Willy waits while a hand is over the board, names a
-move the rules forbid, and checks each of its own moves with the camera. The live view of the board
+On screen, Willy is a character: big eyes that look at the move he is weighing, his candidate moves as arrows,
+what he says about your moves, and a stack light on his head. Every game is saved as PGN in `data/games/`, a
+crashed one too. Willy waits while a hand is over the board, names a
+move the rules forbid, and checks each of its own moves with the camera. Play against the rules too often and
+he loses his patience: first he carries the piece back himself, in the end he takes it off the board. The live view of the board
 detection alone (saddle points, lattice, projected chessboard): `python -m src.board.demo`.
 
 Every game keeps a log in `data/game_logs/<start time>/`: each view (image, depth, masks, pose), what the tracker made

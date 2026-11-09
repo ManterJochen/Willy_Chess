@@ -319,7 +319,9 @@ class ExportTest(unittest.TestCase):
             for number in clicked:
                 self.assertIn(f"{logged.name}_{number:06d}", names)
 
-    def test_a_wrong_move_taken_back_goes_to_review_not_to_training(self):
+    def test_a_wrong_move_is_labelled_with_what_the_board_showed(self):
+        """The camera confirmed the knight on g3 before it was taken back: that view trains with the knight on g3, not
+        with the position of the move played after it (which put it into review before)."""
         class CheatingHuman(ScriptedHuman):
             def wait(self, state, accept):
                 if "not allowed" in state.status:
@@ -336,11 +338,11 @@ class ExportTest(unittest.TestCase):
             logs, out = Path(folder, "logs"), Path(folder, "out")
             _, _, _, logged = played(logs, 44, plies=2, human_cls=CheatingHuman)
             wrong = min(logged.doubted)
+            physical, how = logged.truth[wrong]
+            self.assertEqual((how, physical.get(chess.G3), physical.get(chess.G1)), ("wrong_move", "N", None))
             report = exporter.export(logs, out)
-            self.assertGreater(report["review"], 0)
-            self.assertTrue(any(f"_{wrong:06d}" in reason for reason in report["review_reasons"]), report["review_reasons"])
-            self.assertFalse(list((out / "train" / "images").glob(f"*_{wrong:06d}*")))
-            self.assertTrue(list((out / "review").glob(f"*_{wrong:06d}.jpg")))
+            self.assertFalse(any(f"_{wrong:06d}" in reason for reason in report["review_reasons"]), report["review_reasons"])
+            self.assertTrue(list(out.glob(f"*/images/*_{wrong:06d}*")), "the view of the wrong move was not exported")
 
     def test_a_refused_calibration_frame_is_labelled_from_the_board_locked_later(self):
         def once_refused(rig, mapping):

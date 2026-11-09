@@ -179,8 +179,15 @@ class MoveTracker:
         Returns:
             tuple[bool, float]: Whether the expected position explains the frame, and its geometric NLL.
         """
-        ctx = self._context(frame, calib)
-        geo, _ = self._nll(physical_after(self.board, self.physical, move, self.promotion_mode), ctx)
+        return self.explains(frame, physical_after(self.board, self.physical, move, self.promotion_mode), calib)
+
+    def explains(self, frame: BoardFrame, physical: dict[int, str],
+                 calib: BoardCalibration | None = None) -> tuple[bool, float]:
+        """
+        Whether some pieces (square -> physical symbol) explain the frame, below the gate, and their geometric NLL.
+        Nothing is committed: for a position that is known, or one no legal move leads to (a move against the rules).
+        """
+        geo, _ = self._nll(physical, self._context(frame, calib))
         return geo <= self.gate, geo
 
     def commit(self, move: chess.Move) -> None:
@@ -194,6 +201,20 @@ class MoveTracker:
         self.physical = self._history.pop()
         return self.board.pop()
 
+    def take_off(self, square: int) -> chess.Board:
+        """
+        Take a piece off the board outside the rules (Willy's penalty for moves against them, see board_without).
+        The game goes on from the position without it, as from a new start.
+
+        Returns:
+            chess.Board: The game until now, with its moves, for the record.
+        """
+        before = self.board
+        self.board = board_without(before, square)
+        self.physical = {sq: sym for sq, sym in self.physical.items() if sq != square}
+        self._history = []
+        return before
+
     def _context(self, frame: BoardFrame, calib: BoardCalibration | None = None) -> dict:
         calib = calib or self.calib
         # captured pieces in the graveyard beside the board are no part of the position
@@ -203,16 +224,17 @@ class MoveTracker:
                 "obs": [(positions[k], frame.classes[k], k) for k in positions],
                 "fg": frame.labels > 0, "hidden": {}}
 
-    def locate(self, frame: BoardFrame, calib: BoardCalibration | None = None) -> dict[int, int]:
+    def locate(self, frame: BoardFrame, calib: BoardCalibration | None = None,
+               physical: dict[int, str] | None = None) -> dict[int, int]:
         """
-        Which observed piece is which piece of the current position: square -> piece label.
+        Which observed piece is which piece of the current position (or of `physical`): square -> piece label.
 
         The same matching as the move scoring, against the position as it is; pieces that were not
         seen are missing. More reliable than the free assignment of one image, because it knows
         which pieces must be there.
         """
         located: dict[int, int] = {}
-        self._nll(self.physical, self._context(frame, calib), located)
+        self._nll(self.physical if physical is None else physical, self._context(frame, calib), located)
         return located
 
     def _nll(self, physical: dict[int, str], ctx: dict,
@@ -282,6 +304,18 @@ class MoveTracker:
                 best = min(best, np.count_nonzero(silhouette & ~fg) / max(np.count_nonzero(silhouette), 1))
             cache[key] = best
         return cache[key]
+
+
+def board_without(board: chess.Board, square: int) -> chess.Board:
+    """
+    The position with the piece on `square` taken off, and its castling right with it. No move leads there, so the
+    new board starts without history: Stockfish and a PGN replay a board from its first position, and the moves
+    before would replay the piece back. Nothing is lost for the rules: no position with the piece can repeat.
+    """
+    after = board.copy(stack=False)
+    after.remove_piece_at(square)
+    after.castling_rights = after.clean_castling_rights()
+    return after
 
 
 def _physical_from(board: chess.Board) -> dict[int, str]:

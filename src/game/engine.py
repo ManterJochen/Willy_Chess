@@ -4,7 +4,10 @@ Stockfish through python-chess.
 import os
 import shutil
 import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import chess
 import chess.engine
@@ -12,6 +15,49 @@ import chess.engine
 from src.game.config import REPO_ROOT, EngineConfig
 
 BUNDLED = {"win32": REPO_ROOT / "external" / "chess" / "windows" / "stockfish" / "stockfish-windows-x86-64-universal.exe"}
+MATE_CP = 10000                 # a mate as centipawns, for bars and moods
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """
+    One move Stockfish is weighing.
+
+    Attributes:
+        move (chess.Move): The move.
+        san (str): The move as a person writes it.
+        cp (int): How good it is for the side to move, centipawns (a mate is +-MATE_CP).
+        mate (int | None): Moves to mate, negative where the side to move gets mated.
+    """
+    move: chess.Move
+    san: str
+    cp: int
+    mate: int | None = None
+
+    @property
+    def label(self) -> str:
+        """'+0.35', or 'M3' / 'M-3' for a mate."""
+        return f"M{self.mate}" if self.mate is not None else f"{self.cp / 100:+.2f}"
+
+
+@dataclass(frozen=True)
+class Thought:
+    """How far Stockfish has got: its search depth and its best moves so far, the best first."""
+    depth: int
+    candidates: tuple[Candidate, ...] = ()
+
+
+def thought_of(board: chess.Board, lines: list[dict]) -> Thought:
+    """A Thought from python-chess's analysis lines (``analysis.multipv``); lines without a move yet are left out."""
+    candidates = []
+    for info in lines:
+        pv, score = info.get("pv"), info.get("score")
+        if not pv or score is None or not board.is_legal(pv[0]):
+            continue
+        pov = score.relative
+        candidates.append(Candidate(pv[0], board.san(pv[0]), pov.score(mate_score=MATE_CP), pov.mate()))
+    depth = max((int(info.get("depth", 0)) for info in lines), default=0)
+    return Thought(depth, tuple(candidates))
 
 
 def find_stockfish(path: str | None = None) -> Path:
@@ -55,6 +101,25 @@ class Engine:
     def best_move(self, board: chess.Board) -> chess.Move:
         """Stockfish's move in this position."""
         return self.engine.play(board, self.limit).move
+
+    def think(self, board: chess.Board, on_thought: Callable[[Thought], None], lines: int = 3,
+              fps: float = 30.0) -> chess.Move:
+        """
+        Stockfish's move, watched while it searches: on_thought gets its best `lines` moves so far about `fps`
+        times a second, so the window can show Willy thinking. The move is the one Stockfish answers with (its
+        UCI_Elo included), not simply the first line.
+        """
+        with self.engine.analysis(board, self.limit, multipv=lines) as analysis:
+            while True:
+                try:
+                    while not analysis.would_block():
+                        analysis.get()
+                except chess.engine.AnalysisComplete:
+                    break
+                on_thought(thought_of(board, analysis.multipv))
+                time.sleep(1.0 / fps)
+            on_thought(thought_of(board, analysis.multipv))
+            return analysis.wait().move
 
     def evaluation(self, board: chess.Board) -> str:
         """Short evaluation from White's view for the display: '+0.35' or 'M3'."""

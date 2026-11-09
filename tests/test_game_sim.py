@@ -25,7 +25,7 @@ from bench import sim  # noqa: E402
 from src.game.config import ChessConfig  # noqa: E402
 from src.game.game import ChessGame, ViewState  # noqa: E402
 from src.game.robot_moves import RobotMover  # noqa: E402
-from src.game.tracker import physical_after  # noqa: E402
+from src.game.tracker import MoveTracker, board_without, physical_after  # noqa: E402
 from src.mapping.frame import SYMBOL_TO_CLASS  # noqa: E402
 from src.mapping.geometry import square_centres  # noqa: E402
 from test_mapping_sim import BOARD_TO_BASE, SimDetector, SimPose, SimRig  # noqa: E402
@@ -182,7 +182,7 @@ class ScriptedHuman:
         if "white" in accept:
             return "done"                                             # keep the preselected colour
         if "move" in accept:
-            if len(state.board.move_stack) == self.rig.logical.ply():      # the game knows every move: play
+            if len(state.board.move_stack) == len(self.rig.logical.move_stack):     # the game knows every move: play
                 moves = list(self.rig.logical.legal_moves)
                 self.made = moves[self.rng.integers(len(moves))]
                 if self.made.promotion:
@@ -203,9 +203,11 @@ class ScriptedHuman:
 
 
 class GameSimTest(unittest.TestCase):
-    def play(self, seed: int, plies: int, human_cls=None, setup=None):
+    def play(self, seed: int, plies: int, human_cls=None, setup=None, configure=None):
         rig = GameRig(seed)
         config = ChessConfig()
+        if configure is not None:
+            configure(config)
         from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D
         mapping = ChessBoardMapping3D(rig, SimDetector(rig), SimPose(rig))
         robot = FakeRobot(rig)
@@ -252,6 +254,69 @@ class GameSimTest(unittest.TestCase):
         self.assertTrue(any("Knight g1-g3 is not allowed" in t for t in human.told), human.told)
         self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
 
+
+    def offend(self, take_off: bool):
+        """A game against a human who moves the knight g1-g3 against the rules three times."""
+        class Offender(ScriptedHuman):
+            """Plays e4, then moves the knight g1-g3 against the rules three times: takes it back when told to, leaves
+            it to Willy after that, and plays on once Willy has taken it off."""
+            cheats = 0
+
+            def show(self, state):
+                super().show(state)
+                if "takes your knight off" in state.status and self.rig.logical.piece_at(chess.G1):
+                    logical = self.rig.logical.copy(stack=False)        # what the rules know from now on
+                    logical.remove_piece_at(chess.G1)
+                    self.rig.logical = logical
+
+            def wait(self, state, accept):
+                self.statuses.append(state.status)
+                if "take it back" in state.status:
+                    self.rig.set_physical(self.before)
+                    return "done"
+                if "move" in accept and self.rig.logical.ply() == 0:
+                    self.made = chess.Move.from_uci("e2e4")
+                    self.rig.human_moves(self.made)
+                    return "done"
+                if "move" in accept and self.rig.logical.ply() == 2 and self.cheats < 3:
+                    self.cheats += 1
+                    self.before = dict(self.rig.physical)
+                    physical = dict(self.rig.physical)
+                    physical[chess.G3] = physical.pop(chess.G1)
+                    self.rig.set_physical(physical)
+                    return "done"
+                return super().wait(state, accept)
+
+        def strict(config):
+            config.game.put_back_from, config.game.take_off, config.game.take_off_from = 2, take_off, 3
+
+        rig, game, robot, human = self.play(4, plies=10, human_cls=Offender, configure=strict)
+        changes = [t for i, t in enumerate(human.statuses) if i == 0 or t != human.statuses[i - 1]]   # not every frame
+        return rig, game, robot, " | ".join(changes)
+
+    def test_illegal_moves_are_put_back_and_then_cost_the_piece(self):
+        rig, game, robot, said = self.offend(take_off=True)
+        self.assertEqual(game.illegal_moves, 3)
+        self.assertIn("Please take it back", said)
+        self.assertIn("Willy puts it back", said)
+        self.assertIn("Willy took your knight off the board", said)
+        self.assertEqual(robot.misses, 0, "the robot gripped next to a piece")
+        self.assertIn("N", [symbol for symbol, _ in rig.graveyard])
+        self.assertEqual(game.tracker.physical, rig.physical)
+        self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
+        self.assertGreaterEqual(rig.logical.ply(), 10, "the game did not go on after the knight was taken")
+        self.assertEqual([(t.square, t.piece.symbol(), t.count) for t in game.earlier], [(chess.G1, "N", 3)])
+
+    def test_without_take_off_willy_only_ever_puts_back(self):
+        rig, game, robot, said = self.offend(take_off=False)
+        self.assertEqual(game.illegal_moves, 3)
+        self.assertEqual(said.count("Willy puts it back"), 2, said)
+        self.assertNotIn("off the board", said)
+        self.assertEqual(game.earlier, [])
+        self.assertEqual(game.state.patience, 0, "no patience to lose, none shown")
+        self.assertEqual(robot.misses, 0, "the robot gripped next to a piece")
+        self.assertEqual(game.tracker.physical, rig.physical)
+        self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
 
     def test_resign_and_draw_end_the_game(self):
         for answer, ending in (("resign", "0-1 (you resigned)"), ("draw", "1/2-1/2 (draw agreed)")):
@@ -327,6 +392,20 @@ class GameSimTest(unittest.TestCase):
         self.assertTrue(any("Looking at the board failed: camera gone" in st for st in human.statuses))
         self.assertEqual(game.tracker.board.fen(), rig.logical.fen())
 
+    def test_the_take_off_switch_is_checked(self):
+        import tempfile
+
+        from src.game.config import load_config
+
+        for text, key in (("take_off: 1", "take_off"), ("take_off_from: 0", "take_off_from"),
+                          ("put_back_from: -1", "put_back_from")):
+            with tempfile.TemporaryDirectory() as folder, self.subTest(text=text):
+                path = Path(folder) / "c.yaml"
+                path.write_text(f"game:\n  {text}\n")
+                with self.assertRaises(ValueError) as refused:
+                    load_config(path)
+                self.assertIn(f"game.{key}", str(refused.exception))
+
     def test_a_finished_game_is_saved_as_pgn(self):
         import tempfile
 
@@ -339,6 +418,56 @@ class GameSimTest(unittest.TestCase):
             text = save_pgn(board, "0-1", chess.WHITE, Path(folder)).read_text()
         self.assertIn('[White "Human"]', text)
         self.assertIn("2. g4 Qh4# 0-1", text)
+
+
+class TakeOffTest(unittest.TestCase):
+    """Which piece Willy may take off for moves against the rules, and how the game is written afterwards."""
+
+    def may_take(self, fen: str, square: int) -> bool:
+        from types import SimpleNamespace
+
+        game = ChessGame(None, None, None, None, ChessConfig(), go_look=lambda: None)
+        game.tracker = MoveTracker(SimpleNamespace(square=0.045))
+        game.tracker.reset(fen)
+        return game._may_take_off(square)
+
+    def test_never_the_king_nor_a_piece_that_ends_the_game(self):
+        self.assertTrue(self.may_take(chess.STARTING_FEN, chess.G1))
+        self.assertFalse(self.may_take(chess.STARTING_FEN, chess.E1))
+        self.assertFalse(self.may_take("4k3/8/8/8/8/8/4N3/4R1K1 w - - 0 1", chess.E2), "the rook would give check")
+        self.assertFalse(self.may_take("7k/8/8/8/8/8/2q4P/K7 w - - 0 1", chess.H2), "stalemate")
+
+    def test_the_rules_go_on_without_it(self):
+        board = chess.Board()
+        board.push_san("e4")
+        after = board_without(board, chess.H8)
+        self.assertEqual(after.castling_rights, chess.BB_A1 | chess.BB_H1 | chess.BB_A8)
+        self.assertEqual(after.root().fen(), after.fen(), "Stockfish and the PGN replay from the root")
+
+    def test_a_game_with_a_piece_taken_off_is_saved_in_parts(self):
+        import io
+        import tempfile
+
+        import chess.pgn
+
+        from src.game.game import TakenOff
+        from src.game.play import save_pgn
+
+        board = chess.Board()
+        for san in ("e4", "e5", "Nf3", "Nc6"):
+            board.push_san(san)
+        taken = TakenOff(board, chess.F3, chess.Piece(chess.KNIGHT, chess.WHITE), 4)
+        after = board_without(board, chess.F3)
+        for san in ("d4", "exd4"):
+            after.push_san(san)
+        with tempfile.TemporaryDirectory() as folder:
+            text = save_pgn(after, "0-1", chess.WHITE, Path(folder), [taken]).read_text()
+        stream = io.StringIO(text)
+        first, second = chess.pgn.read_game(stream), chess.pgn.read_game(stream)
+        self.assertEqual(first.end().board().fen(), board.fen())
+        self.assertEqual(second.end().board().fen(), after.fen())
+        self.assertEqual(second.headers["Result"], "0-1")
+        self.assertIn("white knight on f3 off the board", second.comment)
 
 
 class WrongMoveTest(unittest.TestCase):
@@ -366,6 +495,19 @@ class WrongMoveTest(unittest.TestCase):
 
     def test_a_legal_move_is_no_wrong_move(self):
         self.assertIsNone(self.explain(chess.STARTING_FEN, "e2e4"))
+
+    def test_a_piece_of_willys_taken_against_the_rules(self):
+        from src.game.game import find_wrong_move
+
+        board = chess.Board("rnbqkbnr/pp1ppppp/8/2p5/8/2N5/PPPPPPPP/R1BQKBNR w KQkq - 0 2")
+        physical = {s: p.symbol() for s, p in board.piece_map().items()}
+        seen = dict(physical)
+        seen[chess.C5] = seen.pop(chess.C3)
+        wrong = find_wrong_move(board, physical, seen, chess.WHITE)
+        self.assertEqual((wrong.from_square, wrong.to_square, wrong.symbol, wrong.reason, wrong.captured),
+                         (chess.C3, chess.C5, "N", "moves", "p"))
+        seen.pop(chess.D7)                                  # and a pawn of Willy's gone too: no clear move
+        self.assertIsNone(find_wrong_move(board, physical, seen, chess.WHITE))
 
 
 if __name__ == "__main__":

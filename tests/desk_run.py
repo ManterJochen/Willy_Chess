@@ -64,7 +64,12 @@ class DeskEngine:
         self.before: tuple[chess.Board, dict[int, str]] | None = None
 
     def best_move(self, board: chess.Board) -> chess.Move:
-        move = self.engine.best_move(board)
+        return self._chosen(self.engine.best_move(board))
+
+    def think(self, board: chess.Board, on_thought) -> chess.Move:
+        return self._chosen(self.engine.think(board, on_thought))
+
+    def _chosen(self, move: chess.Move) -> chess.Move:
         self.before = (self.rig.logical.copy(), dict(self.rig.physical))
         self.rig.logical.push(move)
         return move
@@ -120,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_config(None)
     config.engine.think_time_s = 0.2
+    config.game.think_show_s = 0.0 if args.headless else config.game.think_show_s
     config.game.pgn_dir = args.pgn_dir or config.game.pgn_dir
     tree = load_tree("console_dummy")
     rig = GameRig(args.seed)

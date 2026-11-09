@@ -68,7 +68,7 @@ class DeadEndTest(unittest.TestCase):
                 return super().wait(state, accept)
 
         rig, game, _, _ = new_game(1, plies=6, human_cls=Overrules)
-        with mock.patch.object(MoveTracker, "verify", lambda *args, **kwargs: (False, 99.0)):    # never confirmed
+        with mock.patch.object(MoveTracker, "explains", lambda *args, **kwargs: (False, 99.0)):  # never confirmed
             game.run()
         self.assertGreater(Overrules.offered, 0)
         self.assertGreaterEqual(game.tracker.board.ply(), 4, "the game went on past Willy's moves")
@@ -558,13 +558,15 @@ class LookViewsTest(unittest.TestCase):
 
     def test_willys_move_is_confirmed_from_the_next_pose_before_anybody_is_asked(self):
         rig, game, _, human = new_game(4, plies=4, views=2)
-        real = MoveTracker.verify
+        real, seen = MoveTracker.explains, []
 
-        def blind_from_the_first_pose(tracker, frame, move, calib=None):
-            return (False, 99.0) if rig.visited[-1] == 0 else real(tracker, frame, move, calib)
+        def blind_from_the_first_pose(tracker, frame, physical, calib=None):
+            seen.append(rig.visited[-1])
+            return (False, 99.0) if rig.visited[-1] == 0 else real(tracker, frame, physical, calib)
 
-        with mock.patch.object(MoveTracker, "verify", blind_from_the_first_pose):
+        with mock.patch.object(MoveTracker, "explains", blind_from_the_first_pose):
             game.run()
+        self.assertIn(1, seen, "Willy's move was never looked at from the second pose")
         self.assertEqual(human.disagreements, 0)
         self.assertGreaterEqual(game.tracker.board.ply(), 2)
 

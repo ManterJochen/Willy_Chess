@@ -14,14 +14,14 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Sequence
 
 import chess
 import chess.pgn
 
 from src.game.config import REPO_ROOT, ChessConfig, load_config
 from src.game.engine import Engine
-from src.game.game import ChessGame
+from src.game.game import ChessGame, TakenOff
 from src.game.robot_moves import DECLINE, JawGeometry, RobotMover
 from src.mapping.calibration import CalibrationResult
 from src.mapping.chessboard_mapping_3d import ChessBoardMapping3D, WillyCameraPose
@@ -136,16 +136,29 @@ def hand_detector(tree: Any) -> Any:
                          f"(or game.hand_detection: false, at your own risk)") from err
 
 
-def save_pgn(board: chess.Board, result: str, human: bool, folder: Path) -> Path:
-    """Write a finished game as PGN, named by its start time."""
-    game = chess.pgn.Game.from_board(board)
+def save_pgn(board: chess.Board, result: str, human: bool, folder: Path, earlier: Sequence[TakenOff] = ()) -> Path:
+    """
+    Write a finished game as PGN, named by its start time. A piece Willy took off the board is no move a PGN can
+    hold: such a game is written in parts, one PGN game each, every later one from its own position (FEN) and
+    saying which piece Willy took.
+    """
     now = datetime.now()
-    game.headers.update(Event="Willy_Chess", Date=now.strftime("%Y.%m.%d"), Result=result,
-                        White="Human" if human == chess.WHITE else "Willy",
-                        Black="Willy" if human == chess.WHITE else "Human")
+    parts = [taken.before for taken in earlier] + [board]
+    games = []
+    for i, part in enumerate(parts):
+        game = chess.pgn.Game.from_board(part)
+        game.headers.update(Event="Willy_Chess", Date=now.strftime("%Y.%m.%d"),
+                            Result=result if i == len(parts) - 1 else "*",
+                            White="Human" if human == chess.WHITE else "Willy",
+                            Black="Willy" if human == chess.WHITE else "Human")
+        if len(parts) > 1:
+            game.headers["Round"] = f"part {i + 1} of {len(parts)}"
+        if i > 0:
+            game.comment = earlier[i - 1].describe()
+        games.append(str(game))
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{now:%Y-%m-%d_%H%M%S}.pgn"
-    path.write_text(str(game) + "\n", encoding="utf-8")
+    path.write_text("\n\n".join(games) + "\n", encoding="utf-8")
     return path
 
 
@@ -211,8 +224,8 @@ def play_games(cell: Cell, engine: Any, view: Any, config: ChessConfig, log_root
                 log.event("crash", error=repr(err))
             raise
         finally:
-            if game.tracker is not None and game.tracker.board.move_stack:
-                print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir)}")
+            if game.tracker is not None and (game.tracker.board.move_stack or game.earlier):
+                print(f"{result}: {save_pgn(game.tracker.board, result, game.human, REPO_ROOT / config.game.pgn_dir, game.earlier)}")
             if log is not None:
                 log.close()
         if result == "*" or not game.ask_new_game():

@@ -73,6 +73,9 @@ All in `config/willy_chess.yaml`. Everything not listed can stay as it is.
 | `game.promotion_mode` | `pawn_stays` (no spare queen, the pawn counts as the new piece) or `piece_swapped` |
 | `game.look_views` | Look poses the game may use, see step 5 |
 | `game.hand_detection` | Before every move of the arm, Willy's palm detector looks for a hand in the whole picture, beside the board too. On by default; it needs `python -m src.pieces.fetch` |
+| `game.think_show_s` | How long Willy thinks on screen at least, 2.5 s by default: once Stockfish has answered he weighs his other candidates once more. 0 shows only the search itself |
+| `game.put_back_from` | A move against the rules that the board clearly shows: the first one you take back yourself, from the 2nd of a game Willy carries the piece back himself. 0: never |
+| `game.take_off`, `game.take_off_from` | Whether Willy loses his patience: from the 4th move against the rules he takes the piece off the board, out of the game (never the king, nor a piece whose loss would end the game). On by default; `false` and he only ever carries it back |
 | `record.enabled` | Keep a log of every game, on by default, see step 7 |
 
 Grasp heights at our cell (Robotiq Hand-E, Staunton set, 45 mm squares): p 0.78, n 0.60, b 0.60, r 0.80, q 0.68, k 0.65. The fingertips reach 10.5 mm below the grasp centre, so it stays at least ~28 mm above the board, clear of the foot; king and queen are held just under the collar, the knight at its neck.
@@ -113,6 +116,18 @@ python main.py
 
 Games are saved as PGN in `data/games/`.
 
+The right side of the window is Willy. The light on his head works like a stack light: green, your move; amber, he
+thinks or the arm moves; flashing red, the arm stopped. While he thinks, his eyes follow the move he likes best,
+the moves he weighs appear as arrows on the board and as a list with Stockfish's evaluation, and he says when he
+changes his mind. He comments on your moves, a captured piece, a check, a strong move or a mistake. The bar left of
+the board is the evaluation, the pieces next to each name are the ones that side has taken.
+
+A move against the rules costs Willy's patience, shown above his speech bubble. The first one you take back
+yourself. After that he carries the piece back with the arm, and once his patience is gone he takes the piece off
+the board instead: it goes to the graveyard and the game goes on without it. Keep your hands off the board while
+he does; the hand check runs first, as before every move of the arm. A game with a piece taken off is saved as a
+PGN in parts, each from its own position.
+
 ## 7. Get more training data
 
 Every game keeps its log in `data/game_logs/`. After a few games:
@@ -148,6 +163,7 @@ is not in Git, it exists only on the machine that trained the weights.
 | `no board grid found` | Is the whole board in the picture? A view straight along the board's edges finds it less often, turn the look pose a little |
 | `N pieces stand on a square expected for another type` | The detector sees too little: move the look pose closer |
 | Nothing is detected, scores around 0.07 | These weights were trained without the repaired loss. Put `"decoder_layers": 5` in their `config.json` |
+| `... is not allowed: ...` | Take the piece back and press space. Willy moves it back himself from the second time; a piece he keeps reading in the wrong place: check that it stands in the middle of its square |
 | `Move not recognised` | Check that each piece stands on its square and press space again, or click the move |
 | `the board looks different than expected` | Fix the board and press space. From the second time, F plays on |
 | `The board was moved` | Press R. If you had already moved, take the move back first |

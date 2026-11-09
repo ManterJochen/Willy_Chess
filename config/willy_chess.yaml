@@ -22,6 +22,12 @@ game:
   # With more, what one view cannot settle (calibration refused, move not confirmed) is looked at from the next pose,
   # by way of look_deg[0], before anybody is asked. Raise it once `mapping_test --all-looks` is happy with the poses.
   look_views: 1
+  # A move against the rules: the first ones you take back yourself. From the put_back_from-th of a game Willy
+  # carries the piece back himself (0: never).
+  put_back_from: 2
+  # Willy loses his patience: from the take_off_from-th he takes the piece off the board, out of the game.
+  take_off: true                # false: he only ever carries it back
+  take_off_from: 4
 
 engine:
   path: null                    # null: $STOCKFISH_PATH, then stockfish on PATH, then external/chess/...

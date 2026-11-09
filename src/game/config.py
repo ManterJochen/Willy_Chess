@@ -35,6 +35,14 @@ class GameConfig:
     # Before the arm moves, Willy's MediaPipe palm detector looks for a hand in the whole picture, not only
     # over the 8x8 squares where the depth looks; it needs the bundle `python -m src.pieces.fetch` downloads
     hand_detection: bool = True
+    # Willy thinks at least this long on screen: he weighs his candidates once more after Stockfish has answered
+    think_show_s: float = 2.5
+    # A move against the rules, clearly on the board: the first ones you take back yourself. From the put_back_from-th
+    # of a game Willy carries the piece back himself (0: never).
+    put_back_from: int = 2
+    # Whether Willy loses his patience: from the take_off_from-th he takes the piece off the board, out of the game.
+    take_off: bool = True
+    take_off_from: int = 4
 
 
 @dataclass
@@ -103,6 +111,12 @@ class ChessConfig:
             raise ValueError(f"game.human_color must be white or black, not {self.game.human_color!r}")
         if self.game.promotion_mode not in ("pawn_stays", "piece_swapped"):
             raise ValueError(f"game.promotion_mode must be pawn_stays or piece_swapped, not {self.game.promotion_mode!r}")
+        for key, least in (("put_back_from", 0), ("take_off_from", 1)):
+            value = getattr(self.game, key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < least:
+                raise ValueError(f"game.{key} must be a whole number, {least} or more, not {value!r}")
+        if not isinstance(self.game.take_off, bool):
+            raise ValueError(f"game.take_off must be true or false, not {self.game.take_off!r}")
         if self.game.look_views < 1:
             raise ValueError(f"game.look_views must be at least 1, not {self.game.look_views!r}")
         if self.robot.graveyard.side not in ("+x", "-x", "+y", "-y"):
